@@ -1,0 +1,8 @@
+# Use the official Nginx image as the base
+FROM nginx:alpine
+
+# Copy the green HTML file to the Nginx default directory
+COPY index-green.html /usr/share/nginx/html/index.html
+
+# Expose port 80
+EXPOSE 80
