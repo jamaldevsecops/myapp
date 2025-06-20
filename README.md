@@ -10,7 +10,7 @@ cd blue
 ```
 - Build the Docker image:
 ```bash
-docker build -t jamaldevsecops/myapp:v1 -f Dockerfile-blue .
+docker build -t jamaldevsecops/myapp:v1.1 -f Dockerfile-blue .
 ```
 
 ## 2. Build the Green Image
@@ -20,7 +20,7 @@ cd ../green
 ```
 - Build the Docker image:
 ```bash
-docker build -t jamaldevsecops/myapp:v2 -f Dockerfile-green .
+docker build -t jamaldevsecops/myapp:v1.2 -f Dockerfile-green .
 ```
 
 ## 3. Build the Yellow Image
@@ -30,21 +30,21 @@ cd ../yellow
 ```
 - Build the Docker image:
 ```bash
-docker build -t jamaldevsecops/myapp:v3 -f Dockerfile-yellow .
+docker build -t jamaldevsecops/myapp:v1.3 -f Dockerfile-yellow .
 ```
 
 ## 4. Run the Containers
 - Run the blue interface container on port 8081:
 ```bash
-docker run -d -p 8081:80 jamaldevsecops/myapp:v1
+docker run -d -p 8081:80 jamaldevsecops/myapp:v1.1
 ```
 - Run the green interface container on port 8082:
 ```bash
-docker run -d -p 8082:80 jamaldevsecops/myapp:v2
+docker run -d -p 8082:80 jamaldevsecops/myapp:v1.2
 ```
 - Run the yellow interface container on port 8083:
 ```bash
-docker run -d -p 8083:80 jamaldevsecops/myapp:v3
+docker run -d -p 8083:80 jamaldevsecops/myapp:v1.3
 ```
 
 
