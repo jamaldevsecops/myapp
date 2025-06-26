@@ -64,6 +64,10 @@ COPY package.json .
 COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/./ ././
 
+#Change the Ownership of the Entire Project
+USER root
+RUN chmown -R node:node /usr/src/app
+USER node
 
 # Expose the port that the application listens on.
 EXPOSE 3000
