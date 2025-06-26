@@ -34,6 +34,17 @@ const versionConfigs: Record<string, VersionConfig> = {
       textSecondary: "text-green-700",
     }
   },
+  "v1.3": {
+    version: "v1.3",
+    theme: {
+      primary: "bg-yellow-600",
+      primaryHover: "hover:bg-yellow-700",
+      secondary: "bg-yellow-50",
+      background: "bg-yellow-50",
+      text: "text-yellow-900",
+      textSecondary: "text-yellow-700",
+    }
+  },
   "latest": {
     version: "latest",
     theme: {
@@ -48,7 +59,7 @@ const versionConfigs: Record<string, VersionConfig> = {
 };
 
 // Change this to switch versions globally
-export const CURRENT_VERSION = "v1.1";
+export const CURRENT_VERSION = "v1.3";
 
 export const getCurrentVersionConfig = (): VersionConfig => {
   return versionConfigs[CURRENT_VERSION] || versionConfigs["v1.1"];
