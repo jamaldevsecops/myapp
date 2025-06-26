@@ -1,37 +1,40 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "@/hooks/useTheme";
 
 const services = [
   {
-    title: "React Development",
-    description: "Modern React applications with clean code"
+    title: "CI/CD Pipeline",
+    description: "Automated continuous integration and deployment workflows"
   },
   {
-    title: "UI/UX Design",
-    description: "Simple and beautiful user interfaces"
+    title: "Container Orchestration",
+    description: "Docker and Kubernetes management made simple"
   },
   {
-    title: "Fast Performance",
-    description: "Optimized for speed and efficiency"
+    title: "Infrastructure as Code",
+    description: "Terraform and CloudFormation templates"
   }
 ];
 
 export const Services = () => {
+  const { theme } = useTheme();
+  
   return (
     <section className="py-16 bg-white">
       <div className="container mx-auto px-6">
-        <h2 className="text-3xl font-bold text-blue-900 text-center mb-12">
-          Our Services
+        <h2 className={`text-3xl font-bold ${theme.text} text-center mb-12`}>
+          DevOps Services
         </h2>
         
         <div className="grid md:grid-cols-3 gap-8">
           {services.map((service, index) => (
-            <Card key={index} className="border-blue-200 hover:shadow-lg transition-shadow">
+            <Card key={index} className="border-gray-200 hover:shadow-lg transition-shadow">
               <CardHeader>
-                <CardTitle className="text-blue-800">{service.title}</CardTitle>
+                <CardTitle className={theme.textSecondary}>{service.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-blue-600">{service.description}</p>
+                <p className={theme.textSecondary}>{service.description}</p>
               </CardContent>
             </Card>
           ))}
