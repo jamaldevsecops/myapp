@@ -4,27 +4,27 @@ import { useTheme } from "@/hooks/useTheme";
 export const Header = () => {
   const { version, theme } = useTheme();
   
-  // Define version colors
-  const getVersionColor = (version: string) => {
+  // Define header background colors based on version (same as footer)
+  const getHeaderBg = (version: string) => {
     switch (version) {
       case 'v1.1':
-        return 'bg-blue-500';
+        return 'bg-blue-900';
       case 'v1.2':
-        return 'bg-green-500';
+        return 'bg-green-900';
       case 'v1.3':
-        return 'bg-yellow-500';
+        return 'bg-yellow-900';
       case 'latest':
-        return 'bg-red-500';
+        return 'bg-gray-900';
       default:
-        return 'bg-gray-500';
+        return 'bg-gray-900';
     }
   };
   
   return (
-    <header className={`${getVersionColor(version)} border-b border-gray-200`}>
+    <header className={`${getHeaderBg(version)} border-b border-gray-200`}>
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-center">
-          <span className="text-xl font-bold text-white">{version}</span>
+          <div className="w-full h-4"></div>
         </div>
       </div>
     </header>

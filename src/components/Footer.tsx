@@ -4,7 +4,7 @@ import { useTheme } from "@/hooks/useTheme";
 export const Footer = () => {
   const { version, theme } = useTheme();
   
-  // Define footer background colors based on version
+  // Define footer background colors based on version (same as header)
   const getFooterBg = (version: string) => {
     switch (version) {
       case 'v1.1':
