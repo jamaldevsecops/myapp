@@ -13,7 +13,7 @@ export interface VersionConfig {
 
 const versionConfigs: Record<string, VersionConfig> = {
   "v1.1": {
-    version: "v1.2",
+    version: "v1.1",
     theme: {
       primary: "bg-blue-600",
       primaryHover: "hover:bg-blue-700",
@@ -59,7 +59,7 @@ const versionConfigs: Record<string, VersionConfig> = {
 };
 
 // Change this to switch versions globally
-export const CURRENT_VERSION = "v1.1";
+export const CURRENT_VERSION = "v1.2";
 
 export const getCurrentVersionConfig = (): VersionConfig => {
   return versionConfigs[CURRENT_VERSION] || versionConfigs["v1.1"];
