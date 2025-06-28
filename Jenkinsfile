@@ -5,10 +5,9 @@ pipeline {
 
     environment {
         CONTAINER_NAME        = "myapp"
-        IMAGE_TAG             = "v1.2"
+        IMAGE_TAG             = "v1.2"  // ✅ You can now change this
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
-        DOCKER_IMAGE          = "${DOCKER_HUB_USERNAME}/${CONTAINER_NAME}:${IMAGE_TAG}"
         DOCKER_CREDENTIALS_ID = "my-dockerhub-registry"
     }
 
@@ -19,20 +18,29 @@ pipeline {
             }
         }
 
+        stage('Set Image Name') {
+            steps {
+                script {
+                    env.DOCKER_IMAGE = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
+                    echo "🔖 Using image tag: ${env.DOCKER_IMAGE}"
+                }
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
                 script {
                     try {
                         sh "docker build -t ${env.DOCKER_IMAGE} -f ${env.DOCKER_FILENAME} ."
-                        echo "✅ Docker image built successfully: ${env.DOCKER_IMAGE}"
+                        echo "✅ Docker image built: ${env.DOCKER_IMAGE}"
                     } catch (Exception e) {
-                        error "❌ Failed to build Docker image: ${env.DOCKER_IMAGE}. Error: ${e.message}"
+                        error "❌ Docker build failed: ${env.DOCKER_IMAGE}. Error: ${e.message}"
                     }
                 }
             }
         }
 
-        stage('Docker Login and Push') {
+        stage('Push Docker Image') {
             steps {
                 script {
                     withCredentials([
@@ -47,7 +55,7 @@ pipeline {
                             docker push ${env.DOCKER_IMAGE}
                             docker logout
                         """
-                        echo "✅ Docker image pushed and logged out from DockerHub."
+                        echo "📦 Image pushed: ${env.DOCKER_IMAGE}"
                     }
                 }
             }
