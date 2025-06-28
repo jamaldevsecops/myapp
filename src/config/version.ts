@@ -13,7 +13,7 @@ export interface VersionConfig {
 
 const versionConfigs: Record<string, VersionConfig> = {
   "v1.1": {
-    version: "v1.1",
+    version: "v1.2",
     theme: {
       primary: "bg-blue-600",
       primaryHover: "hover:bg-blue-700",
