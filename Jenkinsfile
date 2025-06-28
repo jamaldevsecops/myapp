@@ -10,7 +10,6 @@ pipeline {
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_IMAGE          = "${DOCKER_HUB_USERNAME}/${CONTAINER_NAME}:${IMAGE_TAG}"
         DOCKER_CREDENTIALS_ID = "my-dockerhub-registry"
-        DOCKERFILE_DIR        = "."  // Set to current directory
     }
 
     stages {
@@ -24,7 +23,7 @@ pipeline {
             steps {
                 script {
                     try {
-                        sh "docker build -t ${env.DOCKER_IMAGE} -f ${env.DOCKER_FILENAME} ${env.DOCKERFILE_DIR}"
+                        sh "docker build -t ${env.DOCKER_IMAGE} -f ${env.DOCKER_FILENAME} ."
                         echo "✅ Docker image built successfully: ${env.DOCKER_IMAGE}"
                     } catch (Exception e) {
                         error "❌ Failed to build Docker image: ${env.DOCKER_IMAGE}. Error: ${e.message}"
