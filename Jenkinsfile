@@ -5,7 +5,7 @@ pipeline {
 
     environment {
         CONTAINER_NAME        = "myapp"
-        IMAGE_TAG             = "v1.1"
+        IMAGE_TAG             = "v1.2"
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_IMAGE          = "${DOCKER_HUB_USERNAME}/${CONTAINER_NAME}:${IMAGE_TAG}"
