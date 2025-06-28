@@ -10,7 +10,7 @@ pipeline {
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_IMAGE          = "${DOCKER_HUB_USERNAME}/${CONTAINER_NAME}:${IMAGE_TAG}"
         DOCKER_CREDENTIALS_ID = "my-dockerhub-registry"
-        DOCKERFILE_DIR        = "."  // ✅ Define this or remove from build line
+        DOCKERFILE_DIR        = "."  // Set to current directory
     }
 
     stages {
