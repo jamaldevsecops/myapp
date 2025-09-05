@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label 'BUILD-SERVER'
+        label 'BUILD-SERVER1-192.168.20.211'
     }
 
     environment {
