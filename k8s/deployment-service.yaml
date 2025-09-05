@@ -23,7 +23,7 @@ spec:
       - name: myapp
         image: docker.io/jamaldevsecops/myapp
         ports:
-        - containerPort: 80
+        - containerPort: 3000
         #resources:
           #requests:
             #memory: "16Mi"
@@ -69,5 +69,5 @@ spec:
     app: myapp
   ports:
     - protocol: TCP
-      port: 80            
-      targetPort: 80
+      port: 3000            
+      targetPort: 3000
