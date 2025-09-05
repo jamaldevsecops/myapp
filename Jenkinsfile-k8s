@@ -13,7 +13,7 @@ pipeline {
 
         // ↓ Add these for Kubernetes
         K8S_NAMESPACE             = "myapp"
-        KUBECONFIG_CREDENTIALS_ID = "Onprem-Kubernetes-Credential"
+        KUBECONFIG_CREDENTIALS_ID = "k8s"
         APP_NAME                  = "myapp"
     }
 
