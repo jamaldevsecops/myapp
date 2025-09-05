@@ -8,7 +8,7 @@ pipeline {
         IMAGE_TAG             = "latest"
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
-        DOCKER_CREDENTIALS_ID = "my-dockerhub-registry"
+        DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
         RECIPIENT_EMAILS      = "jamal.devsecops@gmail.com"
     }
 
