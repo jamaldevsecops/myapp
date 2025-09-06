@@ -69,14 +69,14 @@ pipeline {
                 script {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
                         // Ensure kubectl sees the cluster & context
-                        sh '''
+                        sh '''#!/bin/bash
                           set -euxo pipefail
                           kubectl version --short
                           kubectl config current-context || true
                         '''
 
                         // First apply (idempotent): creates Deployment/Service if missing
-                        sh '''
+                        sh '''#!/bin/bash
                           set -euxo pipefail
                           if [ -d k8s ]; then
                             kubectl -n ${K8S_NAMESPACE} apply -f k8s/service.yaml
@@ -91,7 +91,7 @@ pipeline {
                         '''
 
                         // Update the image to the freshly built tag
-                        sh '''
+                        sh '''#!/bin/bash
                           set -euxo pipefail
                           kubectl -n ${K8S_NAMESPACE} set image deployment/${APP_NAME} ${APP_NAME}=${DOCKER_IMAGE}
                           kubectl -n ${K8S_NAMESPACE} annotate deployment/${APP_NAME} \
