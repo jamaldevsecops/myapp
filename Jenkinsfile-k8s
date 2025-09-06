@@ -68,31 +68,27 @@ pipeline {
             steps {
                 script {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
-                        // Ensure kubectl sees the cluster & context
                         sh '''#!/bin/bash
                           set -euxo pipefail
-                          kubectl version --short
+                          # Check client and cluster connectivity
+                          kubectl version --client=true
                           kubectl config current-context || true
-                        '''
-
-                        // First apply (idempotent): creates Deployment/Service if missing
-                        sh '''#!/bin/bash
-                          set -euxo pipefail
+        
+                          # Ensure namespace exists
+                          kubectl get ns ${K8S_NAMESPACE} || kubectl create ns ${K8S_NAMESPACE}
+        
+                          # First apply (idempotent): creates Deployment/Service if missing
                           if [ -d k8s ]; then
                             kubectl -n ${K8S_NAMESPACE} apply -f k8s/service.yaml
                             kubectl -n ${K8S_NAMESPACE} apply -f k8s/deployment.yaml
-                            # Apply ingress if present
                             if [ -f k8s/ingress.yaml ]; then
                               kubectl -n ${K8S_NAMESPACE} apply -f k8s/ingress.yaml
                             fi
                           else
                             echo "k8s/ directory not found in repo"; exit 1
                           fi
-                        '''
-
-                        // Update the image to the freshly built tag
-                        sh '''#!/bin/bash
-                          set -euxo pipefail
+        
+                          # Update image to latest build
                           kubectl -n ${K8S_NAMESPACE} set image deployment/${APP_NAME} ${APP_NAME}=${DOCKER_IMAGE}
                           kubectl -n ${K8S_NAMESPACE} annotate deployment/${APP_NAME} \
                             kubernetes.io/change-cause="Deploy ${DOCKER_IMAGE} from Jenkins ${BUILD_URL}" --overwrite
