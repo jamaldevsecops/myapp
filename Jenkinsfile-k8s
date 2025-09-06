@@ -75,7 +75,7 @@ pipeline {
                           kubectl config current-context || true
         
                           # Ensure namespace exists
-                          kubectl get ns ${K8S_NAMESPACE} || kubectl create ns ${K8S_NAMESPACE}
+                         #kubectl get ns ${K8S_NAMESPACE} || kubectl create ns ${K8S_NAMESPACE}
         
                           # First apply (idempotent): creates Deployment/Service if missing
                           if [ -d k8s ]; then
