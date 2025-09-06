@@ -2,8 +2,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: myapp-deployment
-  namespace: myapp # You can change this to your specific namespace
+  name: myapp
+  namespace: myapp
 spec:
   replicas: 2
   strategy:
@@ -21,18 +21,12 @@ spec:
     spec:
       containers:
       - name: myapp
-        image: docker.io/jamaldevsecops/myapp
+        image: docker.io/jamaldevsecops/myapp:latest
+        imagePullPolicy: Always   # ✅ ensures the latest image is always pulled
         ports:
         - containerPort: 3000
-        #resources:
-          #requests:
-            #memory: "16Mi"
-            #cpu: "50m"
-          #limits:
-            #memory: "1Gi"
-            #cpu: "1"
-      #imagePullSecrets:
-      #- name: mydockerhub-creds
+      imagePullSecrets:
+      - name: mydockerhub-creds
 ---
 # HPA for myapp
 apiVersion: autoscaling/v2
