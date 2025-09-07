@@ -1,0 +1,187 @@
+pipeline {
+    agent {
+        label 'BUILD-SERVER1-192.168.20.211'
+    }
+
+    environment {
+        CONTAINER_NAME        = "myapp"
+        IMAGE_TAG             = "latest"
+        DOCKER_FILENAME       = "Dockerfile"
+        DOCKER_HUB_USERNAME   = "jamaldevsecops"
+        DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
+        RECIPIENT_EMAILS      = "jamal.devsecops@gmail.com"
+
+        // Kubernetes
+        K8S_NAMESPACE             = "myapp"
+        KUBECONFIG_CREDENTIALS_ID = "k8s"
+        APP_NAME                  = "myapp"
+    }
+
+    stages {
+        stage('📥 Checkout') {
+            steps {
+                echo "📥 Checking out source code..."
+                checkout scm
+                script {
+                    // Tag image with commit SHA for traceability
+                    env.SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.SHORT_SHA}"
+                    env.DOCKER_IMAGE = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('🔍 Validate & Test') {
+            parallel {
+                stage('Lint') {
+                    steps {
+                        script {
+                            echo "🔍 Running lint checks..."
+                            sh 'echo "No lint configured yet"' // replace with: make lint
+                        }
+                    }
+                }
+                stage('Unit Tests') {
+                    steps {
+                        script {
+                            echo "🧪 Running unit tests..."
+                            sh 'echo "No tests configured yet"' // replace with: make test
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('🔧 Build Docker Image') {
+            steps {
+                script {
+                    try {
+                        echo "🔧 Building Docker image: ${env.DOCKER_IMAGE}"
+                        sh """
+                            docker build \
+                              -t ${env.DOCKER_IMAGE} \
+                              -f ${DOCKER_FILENAME} .
+                        """
+                        echo "✅ Docker image built successfully: ${env.DOCKER_IMAGE}"
+                    } catch (Exception e) {
+                        error "❌ Failed to build Docker image. Error: ${e.message}"
+                    }
+                }
+            }
+        }
+
+        stage('📤 Push Docker Image') {
+            steps {
+                script {
+                    echo "📤 Logging in to DockerHub and pushing image..."
+                    withCredentials([
+                        usernamePassword(
+                            credentialsId: env.DOCKER_CREDENTIALS_ID,
+                            usernameVariable: 'DOCKER_USERNAME',
+                            passwordVariable: 'DOCKER_PASSWORD'
+                        )
+                    ]) {
+                        sh '''
+                            echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+                        '''
+                        sh "docker push ${env.DOCKER_IMAGE}"
+                        echo "✅ Docker image pushed to DockerHub: ${env.DOCKER_IMAGE}"
+                        sh "docker logout"
+                        echo "🚪 Logged out from DockerHub"
+
+                        // Cleanup old images
+                        sh "docker image prune -af || true"
+                    }
+                }
+            }
+        }
+
+        stage('🚀 Deploy to Kubernetes') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
+                        sh '''#!/bin/bash
+                          set -euxo pipefail
+                          
+                          kubectl version --client=true
+                          kubectl config current-context || true
+
+                          # Ensure namespace exists
+                          kubectl get ns ${K8S_NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${K8S_NAMESPACE}
+
+                          if [ -d k8s ]; then
+                            kubectl -n ${K8S_NAMESPACE} apply -f k8s/service.yaml
+                            kubectl -n ${K8S_NAMESPACE} apply -f k8s/deployment.yaml
+                            if [ -f k8s/ingress.yaml ]; then
+                              kubectl -n ${K8S_NAMESPACE} apply -f k8s/ingress.yaml
+                            fi
+                          else
+                            echo "k8s/ directory not found in repo"; exit 1
+                          fi
+
+                          # Update image
+                          kubectl -n ${K8S_NAMESPACE} set image deployment/${APP_NAME} ${APP_NAME}=${DOCKER_IMAGE}
+                          kubectl -n ${K8S_NAMESPACE} annotate deployment/${APP_NAME} \
+                            kubernetes.io/change-cause="Deploy ${DOCKER_IMAGE} from Jenkins ${BUILD_URL}" --overwrite
+
+                          # Rollout and check status
+                          if ! kubectl -n ${K8S_NAMESPACE} rollout status deployment/${APP_NAME} --timeout=180s; then
+                            echo "⚠️ Rollout failed, rolling back..."
+                            kubectl -n ${K8S_NAMESPACE} rollout undo deployment/${APP_NAME}
+                            exit 1
+                          fi
+                        '''
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                emailext(
+                    subject: "✅ [SUCCESS] Build & Deploy: ${env.CONTAINER_NAME} 🚀",
+                    body: """
+                        <p><strong>Status:</strong> SUCCESS</p>
+                        <p><strong>Image:</strong> ${env.DOCKER_IMAGE}</p>
+                        <p>Deployment to namespace <code>${env.K8S_NAMESPACE}</code> finished successfully.</p>
+                    """,
+                    mimeType: 'text/html',
+                    to: "${env.RECIPIENT_EMAILS}",
+                    attachLog: true
+                )
+            }
+        }
+
+        failure {
+            script {
+                try {
+                    withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
+                        sh '''
+                          set +e
+                          echo "---- k8s diagnostics ----"
+                          kubectl -n ${K8S_NAMESPACE} get deploy,rs,po -o wide
+                          kubectl -n ${K8S_NAMESPACE} describe deploy ${APP_NAME} || true
+                          POD=$(kubectl -n ${K8S_NAMESPACE} get pods -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+                            [ -n "$POD" ] && kubectl -n ${K8S_NAMESPACE} logs --tail=200 "$POD" || true
+                          kubectl -n ${K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50 > k8s_events.txt
+                        '''
+                    }
+                } catch (ignored) {}
+                emailext(
+                    subject: "❌ [FAILURE] Build/Deploy: ${env.CONTAINER_NAME} 💥",
+                    body: """
+                        <p><strong>Status:</strong> FAILED</p>
+                        <p><strong>Image:</strong> ${env.CONTAINER_NAME}:${env.IMAGE_TAG}</p>
+                        <p>Please review the Jenkins logs for details.</p>
+                    """,
+                    mimeType: 'text/html',
+                    to: "${env.RECIPIENT_EMAILS}",
+                    attachLog: true,
+                    attachmentsPattern: 'k8s_events.txt'
+                )
+            }
+        }
+    }
+}
