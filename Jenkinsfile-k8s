@@ -79,9 +79,9 @@ pipeline {
                             passwordVariable: 'DOCKER_PASSWORD'
                         )
                     ]) {
-                        sh '''
-                            echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
-                        '''
+                        sh """
+                            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                        """
                         sh "docker push ${env.DOCKER_IMAGE}"
                         echo "✅ Docker image pushed to DockerHub: ${env.DOCKER_IMAGE}"
                         sh "docker logout"
@@ -161,8 +161,8 @@ pipeline {
                           echo "---- k8s diagnostics ----"
                           kubectl -n ${env.K8S_NAMESPACE} get deploy,rs,po -o wide
                           kubectl -n ${env.K8S_NAMESPACE} describe deploy ${env.APP_NAME} || true
-                          POD=$(kubectl -n ${env.K8S_NAMESPACE} get pods -l app=${env.APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-                            [ -n "$POD" ] && kubectl -n ${env.K8S_NAMESPACE} logs --tail=200 "$POD" || true
+                          POD=\\\$(kubectl -n ${env.K8S_NAMESPACE} get pods -l app=${env.APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+                          [ -n "\\\$POD" ] && kubectl -n ${env.K8S_NAMESPACE} logs --tail=200 "\\\$POD" || true
                           kubectl -n ${env.K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50 > k8s_events.txt
                         """
                     }
