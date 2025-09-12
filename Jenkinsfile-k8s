@@ -5,13 +5,13 @@ pipeline {
 
     environment {
         CONTAINER_NAME        = "myapp"
-        IMAGE_TAG             = "v1.1"
+        IMAGE_TAG             = "v1.2"
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
         RECIPIENT_EMAILS      = "jamal.devsecops@gmail.com"
 
-        // ↓ Add these for Kubernetes
+        // Kubernetes
         K8S_NAMESPACE             = "myapp"
         KUBECONFIG_CREDENTIALS_ID = "k8s"
         APP_NAME                  = "myapp"
@@ -22,6 +22,33 @@ pipeline {
             steps {
                 echo "📥 Checking out source code..."
                 checkout scm
+                script {
+                    // Tag image with commit SHA for traceability
+                    env.SHORT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.SHORT_SHA}"
+                    env.DOCKER_IMAGE = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
+                }
+            }
+        }
+
+        stage('🔍 Validate & Test') {
+            parallel {
+                stage('Lint') {
+                    steps {
+                        script {
+                            echo "🔍 Running lint checks..."
+                            sh 'echo "No lint configured yet"' // replace with: make lint
+                        }
+                    }
+                }
+                stage('Unit Tests') {
+                    steps {
+                        script {
+                            echo "🧪 Running unit tests..."
+                            sh 'echo "No tests configured yet"' // replace with: make test
+                        }
+                    }
+                }
             }
         }
 
@@ -29,13 +56,15 @@ pipeline {
             steps {
                 script {
                     try {
-                        echo "🔧 Starting Docker build for: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
-                        def image = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
-                        sh "docker build --no-cache -t ${image} -f ${DOCKER_FILENAME} ."
-                        echo "✅ Docker image built successfully: ${image}"
-                        env.DOCKER_IMAGE = image
+                        echo "🔧 Building Docker image: ${env.DOCKER_IMAGE}"
+                        sh """
+                            docker build \
+                              -t ${env.DOCKER_IMAGE} \
+                              -f ${DOCKER_FILENAME} .
+                        """
+                        echo "✅ Docker image built successfully: ${env.DOCKER_IMAGE}"
                     } catch (Exception e) {
-                        error "❌ Failed to build Docker image: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}. Error: ${e.message}"
+                        error "❌ Failed to build Docker image. Error: ${e.message}"
                     }
                 }
             }
@@ -59,6 +88,9 @@ pipeline {
                         echo "✅ Docker image pushed to DockerHub: ${env.DOCKER_IMAGE}"
                         sh "docker logout"
                         echo "🚪 Logged out from DockerHub"
+
+                        // Cleanup old images
+                        sh "docker image prune -af || true"
                     }
                 }
             }
@@ -70,14 +102,13 @@ pipeline {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
                         sh '''#!/bin/bash
                           set -euxo pipefail
-                          # Check client and cluster connectivity
+                          
                           kubectl version --client=true
                           kubectl config current-context || true
-        
+
                           # Ensure namespace exists
-                         #kubectl get ns ${K8S_NAMESPACE} || kubectl create ns ${K8S_NAMESPACE}
-        
-                          # First apply (idempotent): creates Deployment/Service if missing
+                          kubectl get ns ${K8S_NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${K8S_NAMESPACE}
+
                           if [ -d k8s ]; then
                             kubectl -n ${K8S_NAMESPACE} apply -f k8s/service.yaml
                             kubectl -n ${K8S_NAMESPACE} apply -f k8s/deployment.yaml
@@ -87,12 +118,18 @@ pipeline {
                           else
                             echo "k8s/ directory not found in repo"; exit 1
                           fi
-        
-                          # Update image to latest build
+
+                          # Update image
                           kubectl -n ${K8S_NAMESPACE} set image deployment/${APP_NAME} ${APP_NAME}=${DOCKER_IMAGE}
                           kubectl -n ${K8S_NAMESPACE} annotate deployment/${APP_NAME} \
                             kubernetes.io/change-cause="Deploy ${DOCKER_IMAGE} from Jenkins ${BUILD_URL}" --overwrite
-                          kubectl -n ${K8S_NAMESPACE} rollout status deployment/${APP_NAME} --timeout=180s
+
+                          # Rollout and check status
+                          if ! kubectl -n ${K8S_NAMESPACE} rollout status deployment/${APP_NAME} --timeout=180s; then
+                            echo "⚠️ Rollout failed, rolling back..."
+                            kubectl -n ${K8S_NAMESPACE} rollout undo deployment/${APP_NAME}
+                            exit 1
+                          fi
                         '''
                     }
                 }
@@ -119,7 +156,6 @@ pipeline {
 
         failure {
             script {
-                // Try to capture some k8s diagnostics if deploy stage failed
                 try {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
                         sh '''
@@ -129,7 +165,7 @@ pipeline {
                           kubectl -n ${K8S_NAMESPACE} describe deploy ${APP_NAME} || true
                           POD=$(kubectl -n ${K8S_NAMESPACE} get pods -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
                             [ -n "$POD" ] && kubectl -n ${K8S_NAMESPACE} logs --tail=200 "$POD" || true
-                          kubectl -n ${K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50
+                          kubectl -n ${K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50 > k8s_events.txt
                         '''
                     }
                 } catch (ignored) {}
@@ -142,7 +178,8 @@ pipeline {
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
-                    attachLog: true
+                    attachLog: true,
+                    attachmentsPattern: 'k8s_events.txt'
                 )
             }
         }
