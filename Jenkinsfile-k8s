@@ -5,8 +5,8 @@ pipeline {
 
     environment {
         CONTAINER_NAME        = "myapp"
-        IMAGE_TAG             = ""
-        DOCKER_IMAGE          = ""
+        IMAGE_TAG             = ""   // set dynamically in Checkout stage
+        DOCKER_IMAGE          = ""   // set dynamically in Checkout stage
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
@@ -29,6 +29,7 @@ pipeline {
                     env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.SHORT_SHA}"
                     env.DOCKER_IMAGE = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
                 }
+                echo "🔖 Using image tag: ${env.DOCKER_IMAGE}"
             }
         }
 
@@ -36,18 +37,14 @@ pipeline {
             parallel {
                 stage('Lint') {
                     steps {
-                        script {
-                            echo "🔍 Running lint checks..."
-                            sh 'echo "No lint configured yet"' // replace with: make lint
-                        }
+                        echo "🔍 Running lint checks..."
+                        sh 'echo "No lint configured yet"' // replace with: make lint
                     }
                 }
                 stage('Unit Tests') {
                     steps {
-                        script {
-                            echo "🧪 Running unit tests..."
-                            sh 'echo "No tests configured yet"' // replace with: make test
-                        }
+                        echo "🧪 Running unit tests..."
+                        sh 'echo "No tests configured yet"' // replace with: make test
                     }
                 }
             }
@@ -61,7 +58,7 @@ pipeline {
                         sh """
                             docker build \
                               -t ${env.DOCKER_IMAGE} \
-                              -f ${DOCKER_FILENAME} .
+                              -f ${env.DOCKER_FILENAME} .
                         """
                         echo "✅ Docker image built successfully: ${env.DOCKER_IMAGE}"
                     } catch (Exception e) {
@@ -101,37 +98,37 @@ pipeline {
             steps {
                 script {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
-                        sh '''#!/bin/bash
+                        sh """#!/bin/bash
                           set -euxo pipefail
                           
                           kubectl version --client=true
                           kubectl config current-context || true
 
                           # Ensure namespace exists
-                          kubectl get ns ${K8S_NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${K8S_NAMESPACE}
+                          kubectl get ns ${env.K8S_NAMESPACE} >/dev/null 2>&1 || kubectl create ns ${env.K8S_NAMESPACE}
 
                           if [ -d k8s ]; then
-                            kubectl -n ${K8S_NAMESPACE} apply -f k8s/service.yaml
-                            kubectl -n ${K8S_NAMESPACE} apply -f k8s/deployment.yaml
+                            kubectl -n ${env.K8S_NAMESPACE} apply -f k8s/service.yaml
+                            kubectl -n ${env.K8S_NAMESPACE} apply -f k8s/deployment.yaml
                             if [ -f k8s/ingress.yaml ]; then
-                              kubectl -n ${K8S_NAMESPACE} apply -f k8s/ingress.yaml
+                              kubectl -n ${env.K8S_NAMESPACE} apply -f k8s/ingress.yaml
                             fi
                           else
                             echo "k8s/ directory not found in repo"; exit 1
                           fi
 
                           # Update image
-                          kubectl -n ${K8S_NAMESPACE} set image deployment/${APP_NAME} ${APP_NAME}=${DOCKER_IMAGE}
-                          kubectl -n ${K8S_NAMESPACE} annotate deployment/${APP_NAME} \
-                            kubernetes.io/change-cause="Deploy ${DOCKER_IMAGE} from Jenkins ${BUILD_URL}" --overwrite
+                          kubectl -n ${env.K8S_NAMESPACE} set image deployment/${env.APP_NAME} ${env.APP_NAME}=${env.DOCKER_IMAGE}
+                          kubectl -n ${env.K8S_NAMESPACE} annotate deployment/${env.APP_NAME} \
+                            kubernetes.io/change-cause="Deploy ${env.DOCKER_IMAGE} from Jenkins ${env.BUILD_URL}" --overwrite
 
                           # Rollout and check status
-                          if ! kubectl -n ${K8S_NAMESPACE} rollout status deployment/${APP_NAME} --timeout=180s; then
+                          if ! kubectl -n ${env.K8S_NAMESPACE} rollout status deployment/${env.APP_NAME} --timeout=180s; then
                             echo "⚠️ Rollout failed, rolling back..."
-                            kubectl -n ${K8S_NAMESPACE} rollout undo deployment/${APP_NAME}
+                            kubectl -n ${env.K8S_NAMESPACE} rollout undo deployment/${env.APP_NAME}
                             exit 1
                           fi
-                        '''
+                        """
                     }
                 }
             }
@@ -159,15 +156,15 @@ pipeline {
             script {
                 try {
                     withCredentials([file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG')]) {
-                        sh '''
+                        sh """#!/bin/bash
                           set +e
                           echo "---- k8s diagnostics ----"
-                          kubectl -n ${K8S_NAMESPACE} get deploy,rs,po -o wide
-                          kubectl -n ${K8S_NAMESPACE} describe deploy ${APP_NAME} || true
-                          POD=$(kubectl -n ${K8S_NAMESPACE} get pods -l app=${APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
-                            [ -n "$POD" ] && kubectl -n ${K8S_NAMESPACE} logs --tail=200 "$POD" || true
-                          kubectl -n ${K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50 > k8s_events.txt
-                        '''
+                          kubectl -n ${env.K8S_NAMESPACE} get deploy,rs,po -o wide
+                          kubectl -n ${env.K8S_NAMESPACE} describe deploy ${env.APP_NAME} || true
+                          POD=$(kubectl -n ${env.K8S_NAMESPACE} get pods -l app=${env.APP_NAME} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null); \
+                            [ -n "$POD" ] && kubectl -n ${env.K8S_NAMESPACE} logs --tail=200 "$POD" || true
+                          kubectl -n ${env.K8S_NAMESPACE} get events --sort-by=.lastTimestamp | tail -n 50 > k8s_events.txt
+                        """
                     }
                 } catch (ignored) {}
                 emailext(
