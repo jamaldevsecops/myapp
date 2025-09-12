@@ -59,7 +59,7 @@ const versionConfigs: Record<string, VersionConfig> = {
 };
 
 // Change this to switch versions globally
-export const CURRENT_VERSION = "v1.3";
+export const CURRENT_VERSION = "latest";
 
 export const getCurrentVersionConfig = (): VersionConfig => {
   return versionConfigs[CURRENT_VERSION] || versionConfigs["v1.1"];
