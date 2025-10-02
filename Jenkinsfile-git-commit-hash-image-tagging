@@ -1,6 +1,7 @@
+// Jenkinsfile: Build Docker Image with Automatic Tagging using Git Commit Hash
 pipeline {
     agent {
-        label 'BUILD-SERVER1-192.168.20.211'
+        label 'BUILD-SERVER'
     }
 
     parameters {
@@ -73,12 +74,16 @@ pipeline {
                 emailext(
                     subject: "✅ [SUCCESS] Build Report: ${env.CONTAINER_NAME} 🚀",
                     body: """
-                        <p><strong>Build Status:</strong> SUCCESS</p>
-                        <p><strong>Image:</strong> ${env.DOCKER_IMAGE}</p>
-                        <p><strong>Digest:</strong> ${env.DOCKER_DIGEST}</p>
-                        <p><strong>Git Branch:</strong> ${env.GIT_BRANCH}</p>
-                        <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH}</p>
-                        <p>The Docker image has been successfully built and pushed to DockerHub.</p>
+                        <html>
+                        <body style="font-family: Arial, sans-serif; color: #333;">
+                            <h2 style="color: green;">✅ Build Succeeded</h2>
+                            <p><strong>Docker Image:</strong> ${env.DOCKER_IMAGE}</p>
+                            <p><strong>Digest:</strong> ${env.DOCKER_DIGEST}</p>
+                            <p><strong>Git Branch:</strong> ${env.GIT_BRANCH}</p>
+                            <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH}</p>
+                            <p>The Docker image has been successfully built and pushed to DockerHub.</p>
+                        </body>
+                        </html>
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
@@ -92,11 +97,15 @@ pipeline {
                 emailext(
                     subject: "❌ [FAILURE] Build Report: ${env.CONTAINER_NAME} 💥",
                     body: """
-                        <p><strong>Build Status:</strong> FAILED</p>
-                        <p><strong>Image Attempted:</strong> ${env.CONTAINER_NAME}:${env.IMAGE_TAG}</p>
-                        <p><strong>Git Branch:</strong> ${env.GIT_BRANCH ?: 'N/A'}</p>
-                        <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH ?: 'N/A'}</p>
-                        <p>Please review the Jenkins logs for details.</p>
+                        <html>
+                        <body style="font-family: Arial, sans-serif; color: #333;">
+                            <h2 style="color: red;">❌ Build Failed</h2>
+                            <p><strong>Image Attempted:</strong> ${env.CONTAINER_NAME}:${env.IMAGE_TAG}</p>
+                            <p><strong>Git Branch:</strong> ${env.GIT_BRANCH ?: 'N/A'}</p>
+                            <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH ?: 'N/A'}</p>
+                            <p>Please review the Jenkins logs for details.</p>
+                        </body>
+                        </html>
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
