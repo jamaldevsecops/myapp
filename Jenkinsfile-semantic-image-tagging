@@ -22,28 +22,33 @@ pipeline {
         stage('🔢 Determine Next Semantic Version') {
             steps {
                 script {
+                    // Fetch latest tags
+                    sh 'git fetch --tags'
+
                     // Get latest tag, fallback to v0.0.0
                     def latestTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo v0.0.0").trim()
                     echo "Latest Git tag: ${latestTag}"
 
-                    // Parse major.minor.patch
+                    // Parse version
                     def versionNumbers = latestTag.replaceFirst(/^v/, '').split('\\.')
                     def major = versionNumbers[0].toInteger()
                     def minor = versionNumbers[1].toInteger()
                     def patch = versionNumbers[2].toInteger()
 
-                    // Auto bump patch (can be parameterized later for minor/major)
+                    // Bump patch
                     patch += 1
                     env.IMAGE_TAG = "v${major}.${minor}.${patch}"
                     echo "Next version: ${env.IMAGE_TAG}"
 
-                    // Create new Git tag
-                    sh """
-                        git config user.email "ci-bot@company.com"
-                        git config user.name "CI Bot"
-                        git tag ${env.IMAGE_TAG}
-                        git push origin ${env.IMAGE_TAG}
-                    """
+                    // Push tag securely using your GitHub token
+                    withCredentials([string(credentialsId: 'PersonalGitHubAccessToken', variable: 'GIT_TOKEN')]) {
+                        sh """
+                            git config user.email "ci-bot@company.com"
+                            git config user.name "CI Bot"
+                            git tag ${env.IMAGE_TAG}
+                            git push https://$GIT_TOKEN@github.com/your-org/your-repo.git ${env.IMAGE_TAG}
+                        """
+                    }
                 }
             }
         }
