@@ -46,7 +46,7 @@ pipeline {
                             git config user.email "ci-bot@company.com"
                             git config user.name "CI Bot"
                             git tag ${env.IMAGE_TAG}
-                            git push https://$GIT_TOKEN@github.com/your-org/your-repo.git ${env.IMAGE_TAG}
+                            git push https://$GIT_TOKEN@github.com/jamaldevsecops/myapp.git ${env.IMAGE_TAG}
                         """
                     }
                 }
