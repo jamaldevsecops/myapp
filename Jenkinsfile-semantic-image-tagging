@@ -1,3 +1,5 @@
+# Automatic Image Taggig for Semantic Version
+# Need Repo write here for Tagging (e.g GitHub-PAT).
 pipeline {
     agent {
         label 'BUILD-SERVER1-192.168.20.211'
