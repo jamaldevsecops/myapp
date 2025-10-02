@@ -77,11 +77,13 @@ pipeline {
                         <html>
                         <body style="font-family: Arial, sans-serif; color: #333;">
                             <h2 style="color: green;">✅ Build Succeeded</h2>
-                            <p><strong>Docker Image:</strong> ${env.DOCKER_IMAGE}</p>
-                            <p><strong>Digest:</strong> ${env.DOCKER_DIGEST}</p>
-                            <p><strong>Git Branch:</strong> ${env.GIT_BRANCH}</p>
-                            <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH}</p>
-                            <p>The Docker image has been successfully built and pushed to DockerHub.</p>
+                            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 14px;">
+                                <tr><td><strong>Docker Image</strong></td><td>${env.DOCKER_IMAGE}</td></tr>
+                                <tr><td><strong>Digest</strong></td><td>${env.DOCKER_DIGEST}</td></tr>
+                                <tr><td><strong>Git Branch</strong></td><td>${env.GIT_BRANCH}</td></tr>
+                                <tr><td><strong>Git Commit</strong></td><td>${env.GIT_COMMIT_HASH}</td></tr>
+                            </table>
+                            <p style="margin-top: 15px;">The Docker image has been successfully built and pushed to DockerHub.</p>
                         </body>
                         </html>
                     """,
@@ -100,10 +102,12 @@ pipeline {
                         <html>
                         <body style="font-family: Arial, sans-serif; color: #333;">
                             <h2 style="color: red;">❌ Build Failed</h2>
-                            <p><strong>Image Attempted:</strong> ${env.CONTAINER_NAME}:${env.IMAGE_TAG}</p>
-                            <p><strong>Git Branch:</strong> ${env.GIT_BRANCH ?: 'N/A'}</p>
-                            <p><strong>Git Commit:</strong> ${env.GIT_COMMIT_HASH ?: 'N/A'}</p>
-                            <p>Please review the Jenkins logs for details.</p>
+                            <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 14px;">
+                                <tr><td><strong>Image Attempted</strong></td><td>${env.CONTAINER_NAME}:${env.IMAGE_TAG}</td></tr>
+                                <tr><td><strong>Git Branch</strong></td><td>${env.GIT_BRANCH ?: 'N/A'}</td></tr>
+                                <tr><td><strong>Git Commit</strong></td><td>${env.GIT_COMMIT_HASH ?: 'N/A'}</td></tr>
+                            </table>
+                            <p style="margin-top: 15px;">Please review the Jenkins logs for details.</p>
                         </body>
                         </html>
                     """,
