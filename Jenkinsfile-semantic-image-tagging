@@ -1,5 +1,6 @@
-# Automatic Image Taggig for Semantic Version
-# Need Repo write here for Tagging (e.g GitHub-PAT).
+// Build Docker Image with Automatic Semantic Version Tagging
+// Pre-requisite: Jenkins needs repo write access (e.g GitHub PAT)
+
 pipeline {
     agent {
         label 'BUILD-SERVER1-192.168.20.211'
@@ -24,20 +25,17 @@ pipeline {
         stage('🔢 Determine Next Semantic Version') {
             steps {
                 script {
-                    // Fetch all tags from remote
                     sh 'git fetch --tags'
 
-                    // Get latest tag, fallback to v0.0.0
                     def latestTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo v0.0.0").trim()
                     echo "Latest Git tag: ${latestTag}"
 
-                    // Parse version
                     def versionNumbers = latestTag.replaceFirst(/^v/, '').split('\\.')
                     def major = versionNumbers[0].toInteger()
                     def minor = versionNumbers[1].toInteger()
                     def patch = versionNumbers[2].toInteger()
 
-                    // Bump patch until tag is available
+                    // bump until new tag available
                     while(sh(returnStatus: true, script: "git rev-parse v${major}.${minor}.${patch}") == 0) {
                         patch += 1
                     }
@@ -45,8 +43,7 @@ pipeline {
                     env.IMAGE_TAG = "v${major}.${minor}.${patch}"
                     echo "Next available version: ${env.IMAGE_TAG}"
 
-                    // Create and push tag securely using Secret Text PAT
-                    withCredentials([string(credentialsId: 'PersonalGitHubAccessToken', variable: 'GIT_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'GitHub-PAT', variable: 'GIT_TOKEN')]) {
                         sh """
                             git config user.email "ci-bot@company.com"
                             git config user.name "CI Bot"
@@ -68,10 +65,9 @@ pipeline {
 
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest") // optional: push latest tag
+                        app.push("latest")
                         env.DOCKER_IMAGE = imageName
 
-                        // Capture digest for report
                         env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
                         echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
                     }
@@ -127,5 +123,4 @@ pipeline {
             }
         }
     }
-
 }
