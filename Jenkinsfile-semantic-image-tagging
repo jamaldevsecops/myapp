@@ -85,34 +85,47 @@ pipeline {
             script {
                 emailext(
                     subject: "✅ [SUCCESS] Build Report: ${env.CONTAINER_NAME} 🚀",
-                    body: """
-                        <p><strong>Build Status:</strong> SUCCESS</p>
-                        <p><strong>Docker Image:</strong> ${env.DOCKER_IMAGE}</p>
-                        <p><strong>Digest:</strong> ${env.DOCKER_DIGEST}</p>
-                        <p><strong>Git Tag:</strong> ${env.IMAGE_TAG}</p>
-                        <p>The Docker image has been successfully built, tagged, and pushed to DockerHub.</p>
-                    """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
-                    attachLog: true
+                    attachLog: true,
+                    body: """
+                    <html>
+                    <body>
+                        <h2 style="color:green;">Build Status: SUCCESS ✅</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><th align="left">Docker Image</th><td>${env.DOCKER_IMAGE}</td></tr>
+                            <tr><th align="left">Digest</th><td>${env.DOCKER_DIGEST}</td></tr>
+                            <tr><th align="left">Git Tag</th><td>${env.IMAGE_TAG}</td></tr>
+                        </table>
+                        <p>The Docker image has been successfully built, tagged, and pushed to DockerHub.</p>
+                    </body>
+                    </html>
+                    """
                 )
             }
         }
-
+    
         failure {
             script {
                 emailext(
                     subject: "❌ [FAILURE] Build Report: ${env.CONTAINER_NAME} 💥",
-                    body: """
-                        <p><strong>Build Status:</strong> FAILED</p>
-                        <p><strong>Docker Image Attempted:</strong> ${env.CONTAINER_NAME}:${env.IMAGE_TAG}</p>
-                        <p>Please review the Jenkins logs for details.</p>
-                    """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
-                    attachLog: true
+                    attachLog: true,
+                    body: """
+                    <html>
+                    <body>
+                        <h2 style="color:red;">Build Status: FAILED ❌</h2>
+                        <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
+                            <tr><th align="left">Docker Image Attempted</th><td>${env.CONTAINER_NAME}:${env.IMAGE_TAG}</td></tr>
+                        </table>
+                        <p>Please review the Jenkins logs for details.</p>
+                    </body>
+                    </html>
+                    """
                 )
             }
         }
     }
+
 }
