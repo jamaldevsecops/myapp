@@ -41,7 +41,7 @@ pipeline {
                     echo "Next version: ${env.IMAGE_TAG}"
 
                     // Push tag securely using your GitHub token
-                    withCredentials([string(credentialsId: 'PersonalGitHubAccessToken', variable: 'GIT_TOKEN')]) {
+                    withCredentials([string(credentialsId: 'GitHub-PAT', variable: 'GIT_TOKEN')]) {
                         sh """
                             git config user.email "ci-bot@company.com"
                             git config user.name "CI Bot"
