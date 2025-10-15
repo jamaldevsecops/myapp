@@ -26,7 +26,7 @@ pipeline {
                     try {
                         echo "🔧 Starting Docker build for: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
                         def image = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
-                        sh "docker build --no-cache -t ${image} -f ${DOCKER_FILENAME} ."
+                        sh "docker build -t ${image} -f ${DOCKER_FILENAME} ."
                         echo "✅ Docker image built successfully: ${image}"
                         env.DOCKER_IMAGE = image
                     } catch (Exception e) {
