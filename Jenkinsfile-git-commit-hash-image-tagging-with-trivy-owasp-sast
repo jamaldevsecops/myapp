@@ -75,7 +75,7 @@ pipeline {
                 always {
                     echo "📦 Archiving Dependency-Check reports..."
                     archiveArtifacts artifacts: 'dependency-check-report.*', fingerprint: true
-                    dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
+                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
                 }
             }
         }
