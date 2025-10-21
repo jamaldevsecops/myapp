@@ -1,6 +1,7 @@
-// Jenkinsfile: Docker Build + Trivy Security Scan
 pipeline {
-    agent { label 'BUILD-SERVER' }
+    agent {
+        label 'BUILD-SERVER'
+    }
 
     parameters {
         string(name: 'OVERRIDE_TAG', defaultValue: '', description: 'Optional: override auto-generated image tag')
@@ -22,9 +23,11 @@ pipeline {
                 script {
                     sh 'git fetch --tags'
 
+                    // Try to get the latest Git tag
                     def gitTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo ''").trim()
                     def commitHash = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
 
+                    // Determine image tag
                     if (params.OVERRIDE_TAG?.trim()) {
                         env.IMAGE_TAG = params.OVERRIDE_TAG
                         echo "🔖 Using override tag: ${env.IMAGE_TAG}"
@@ -52,9 +55,10 @@ pipeline {
 
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest")
+                        app.push("latest") // Optional: also push 'latest'
                         env.DOCKER_IMAGE = imageName
 
+                        // Capture digest for email/report
                         env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
                         echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
                     }
@@ -65,7 +69,7 @@ pipeline {
         stage('🛡️ Trivy Security Scan') {
             steps {
                 script {
-                    // Ensure Trivy template exists in workspace
+                    // Create a template for Trivy summary
                     writeFile file: 'trivy-summary.tpl', text: '''{{ range .Results }}
 Target: {{ .Target }}
 {{ if .Vulnerabilities }}
@@ -78,14 +82,13 @@ No vulnerabilities found.
 {{ end }}
 {{ end }}'''
 
+                    // Run Trivy scan
                     sh """
                         echo "🔍 Running Trivy scan..."
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL -f table -o trivy-report.txt ${env.DOCKER_IMAGE}
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL \
-                            --format template --template "@trivy-summary.tpl" -o trivy-summary.txt ${env.DOCKER_IMAGE}
-                        echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-summary.txt"
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template "@trivy-summary.tpl" -o trivy-summary.txt ${env.DOCKER_IMAGE}
+                        echo "✅ Trivy scan completed."
                     """
-                    env.TRIVY_SUMMARY = readFile('trivy-summary.txt').trim()
                 }
             }
         }
@@ -94,6 +97,14 @@ No vulnerabilities found.
     post {
         always {
             script {
+                // Read summary safely
+                def summary = ''
+                if (fileExists('trivy-summary.txt')) {
+                    summary = readFile('trivy-summary.txt').trim()
+                } else {
+                    summary = "No summary available"
+                }
+
                 emailext(
                     subject: "🛡️ Docker Build + Security Scan Report: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
                     body: """
@@ -108,14 +119,15 @@ No vulnerabilities found.
                             </table>
                             <h3 style="color: #C0392B; margin-top: 20px;">Trivy Vulnerability Summary:</h3>
                             <pre style="background-color: #F4F4F4; padding: 10px; border-radius: 4px; font-size: 13px;">
-${env.TRIVY_SUMMARY}
+${summary}
                             </pre>
                         </body>
                         </html>
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
-                    attachLog: true
+                    attachLog: true,
+                    attachmentsPattern: 'trivy-report.txt' // attach full Trivy report
                 )
             }
         }
