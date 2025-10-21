@@ -1,4 +1,4 @@
-// Jenkinsfile: Build Docker Image + Trivy Scan + Email Report (JSON/Table)
+// Jenkinsfile: Build Docker Image + Trivy Scan + Vulnerability Summary Email
 pipeline {
     agent {
         label 'BUILD-SERVER'
@@ -64,7 +64,7 @@ pipeline {
             }
         }
 
-        stage('🔍 Trivy Image Scan') {
+        stage('🔍 Trivy Docker Image Security Scan') {
             steps {
                 script {
                     echo "🔍 Scanning Docker image for vulnerabilities..."
@@ -76,10 +76,37 @@ pipeline {
                         echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-report.json"
                     '''
 
-                    // Optional: create a short summary (first 10 lines) for email
-                    script {
-                        env.TRIVY_SUMMARY = readFile('trivy-report.txt').split('\n').take(10).join('<br>')
+                    // Read first 10 lines of table report for email
+                    def lines = readFile('trivy-report.txt').split('\n')
+                    def first10 = []
+                    for (int i = 0; i < Math.min(10, lines.size()); i++) {
+                        first10.add(lines[i])
                     }
+                    env.TRIVY_SUMMARY = first10.join('<br>')
+
+                    // Parse JSON report for severity summary
+                    def jsonText = readFile('trivy-report.json')
+                    def json = new groovy.json.JsonSlurper().parseText(jsonText)
+
+                    def severityCount = [LOW:0, MEDIUM:0, HIGH:0, CRITICAL:0]
+
+                    json.each { result ->
+                        if (result.Vulnerabilities != null) {
+                            result.Vulnerabilities.each { vuln ->
+                                def sev = vuln.Severity?.toUpperCase()
+                                if (severityCount.containsKey(sev)) {
+                                    severityCount[sev] += 1
+                                }
+                            }
+                        }
+                    }
+
+                    env.TRIVY_SEVERITY_SUMMARY = """
+                        LOW: ${severityCount.LOW}, 
+                        MEDIUM: ${severityCount.MEDIUM}, 
+                        HIGH: ${severityCount.HIGH}, 
+                        CRITICAL: ${severityCount.CRITICAL}
+                    """
                 }
             }
         }
@@ -104,6 +131,11 @@ pipeline {
                             <h3 style="margin-top: 15px;">🔍 Trivy Vulnerability Summary (first 10 lines)</h3>
                             <p style="font-family: monospace; background-color: #f5f5f5; padding: 10px; border-radius: 5px;">
                                 ${env.TRIVY_SUMMARY ?: 'No vulnerabilities found.'}
+                            </p>
+
+                            <h3 style="margin-top: 15px;">📊 Severity Counts</h3>
+                            <p style="font-family: monospace; background-color: #eef2f7; padding: 10px; border-radius: 5px;">
+                                ${env.TRIVY_SEVERITY_SUMMARY}
                             </p>
 
                             <p style="margin-top: 15px;">The Docker image has been successfully built, pushed, and scanned with Trivy.</p>
