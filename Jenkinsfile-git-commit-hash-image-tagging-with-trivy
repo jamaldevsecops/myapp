@@ -69,19 +69,23 @@ pipeline {
         stage('🛡️ Trivy Security Scan') {
             steps {
                 script {
-                    // Create a template for Trivy summary
-                    writeFile file: 'trivy-summary.tpl', text: '''{{ range .Results }}
-Target: {{ .Target }}
-{{ if .Vulnerabilities }}
-Vulnerabilities:
-{{- range .Vulnerabilities }}
-  - [{{ .Severity }}] {{ .PkgName }} {{ .InstalledVersion }} -> {{ .FixedVersion }}
-{{- end }}
-{{ else }}
-No vulnerabilities found.
-{{ end }}
-{{ end }}'''
-
+                    // Write safe Trivy template
+                    writeFile file: 'trivy-summary.tpl', text: '''{{- if .Results }}
+        {{- range .Results }}
+        Target: {{ .Target }}
+        {{- if .Vulnerabilities }}
+        Vulnerabilities:
+        {{- range .Vulnerabilities }}
+          - [{{ .Severity }}] {{ .PkgName }} {{ .InstalledVersion }} -> {{ .FixedVersion }}
+        {{- end }}
+        {{- else }}
+        No vulnerabilities found.
+        {{- end }}
+        {{ end }}
+        {{- else }}
+        No results found
+        {{- end }}'''
+        
                     // Run Trivy scan
                     sh """
                         echo "🔍 Running Trivy scan..."
