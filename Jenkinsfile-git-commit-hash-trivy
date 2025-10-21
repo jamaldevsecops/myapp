@@ -1,4 +1,4 @@
-// Jenkinsfile: Build Docker Image + Trivy Scan + Vulnerability Summary Email
+// Jenkinsfile: Build Docker Image + Trivy Scan + Vulnerability Summary Email (Sandbox-safe)
 pipeline {
     agent {
         label 'BUILD-SERVER'
@@ -64,12 +64,12 @@ pipeline {
             }
         }
 
-        stage('🔍 Trivy Docker Image Security Scan') {
+        stage('🔍 Trivy Image Scan') {
             steps {
                 script {
                     echo "🔍 Scanning Docker image for vulnerabilities..."
 
-                    // Generate table + JSON reports, do not fail build
+                    // Generate table + JSON reports
                     sh '''
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt $DOCKER_IMAGE
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o trivy-report.json $DOCKER_IMAGE
@@ -84,16 +84,17 @@ pipeline {
                     }
                     env.TRIVY_SUMMARY = first10.join('<br>')
 
-                    // Parse JSON report for severity summary
+                    // Parse JSON report for severity summary (sandbox-safe)
                     def jsonText = readFile('trivy-report.json')
                     def json = new groovy.json.JsonSlurper().parseText(jsonText)
 
                     def severityCount = [LOW:0, MEDIUM:0, HIGH:0, CRITICAL:0]
 
                     json.each { result ->
-                        if (result.Vulnerabilities != null) {
-                            result.Vulnerabilities.each { vuln ->
-                                def sev = vuln.Severity?.toUpperCase()
+                        def vulns = result.get('Vulnerabilities')  // <-- safe access
+                        if (vulns != null) {
+                            vulns.each { vuln ->
+                                def sev = vuln.get('Severity')?.toUpperCase()
                                 if (severityCount.containsKey(sev)) {
                                     severityCount[sev] += 1
                                 }
