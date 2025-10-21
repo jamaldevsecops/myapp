@@ -72,7 +72,7 @@ pipeline {
                     // Generate text + HTML reports, do not fail build
                     sh '''
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt $DOCKER_IMAGE
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format html -o trivy-report.html $DOCKER_IMAGE
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o trivy-report.json $DOCKER_IMAGE
                         echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-report.html"
                     '''
 
