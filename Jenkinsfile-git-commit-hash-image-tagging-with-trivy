@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        label 'BUILD-SERVER'
-    }
+    agent { label 'BUILD-SERVER' }
 
     parameters {
         string(name: 'OVERRIDE_TAG', defaultValue: '', description: 'Optional: override auto-generated image tag')
@@ -23,11 +21,9 @@ pipeline {
                 script {
                     sh 'git fetch --tags'
 
-                    // Try to get the latest Git tag
                     def gitTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo ''").trim()
                     def commitHash = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
 
-                    // Determine image tag
                     if (params.OVERRIDE_TAG?.trim()) {
                         env.IMAGE_TAG = params.OVERRIDE_TAG
                         echo "🔖 Using override tag: ${env.IMAGE_TAG}"
@@ -55,10 +51,9 @@ pipeline {
 
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest") // Optional: also push 'latest'
+                        app.push("latest") 
                         env.DOCKER_IMAGE = imageName
 
-                        // Capture digest for email/report
                         env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
                         echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
                     }
@@ -66,33 +61,37 @@ pipeline {
             }
         }
 
-        stage('🛡️ Trivy Security Scan') {
+        stage('🛡️ Trivy Image Scan') {
             steps {
                 script {
-                    // Write safe Trivy template
-                    writeFile file: 'trivy-summary.tpl', text: '''{{- if .Results }}
-        {{- range .Results }}
-        Target: {{ .Target }}
-        {{- if .Vulnerabilities }}
-        Vulnerabilities:
-        {{- range .Vulnerabilities }}
-          - [{{ .Severity }}] {{ .PkgName }} {{ .InstalledVersion }} -> {{ .FixedVersion }}
-        {{- end }}
-        {{- else }}
-        No vulnerabilities found.
-        {{- end }}
-        {{ end }}
-        {{- else }}
-        No results found
-        {{- end }}'''
-        
-                    // Run Trivy scan
+                    // Write the template file with handling for missing FixedVersion
+                    writeFile file: 'trivy-summary.tpl', text: '''
+{{ range .Results }}
+{{ .Target }}:
+    {{ if .Vulnerabilities }}
+    {{ range .Vulnerabilities }}- {{ .Severity }}: {{ .PkgName }} {{ .InstalledVersion }} -> {{ if .FixedVersion }}{{ .FixedVersion }}{{ else }}N/A{{ end }}
+    {{ end }}
+    {{ else }}No vulnerabilities found.
+    {{ end }}
+{{ end }}
+'''
+
+                    // Run Trivy scans with explicit workspace path and debugging
                     sh """
-                        echo "🔍 Running Trivy scan..."
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL -f table -o trivy-report.txt ${env.DOCKER_IMAGE}
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template "@trivy-summary.tpl" -o trivy-summary.txt ${env.DOCKER_IMAGE}
-                        echo "✅ Trivy scan completed."
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o ${WORKSPACE}/trivy-report.txt ${env.DOCKER_IMAGE}
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template ${WORKSPACE}/trivy-summary.tpl -o ${WORKSPACE}/trivy-summary.txt ${env.DOCKER_IMAGE}
+                        ls -l ${WORKSPACE}/trivy-summary.txt
+                        cat ${WORKSPACE}/trivy-summary.txt
                     """
+
+                    // Read the summary with error handling
+                    if (fileExists('trivy-summary.txt')) {
+                        env.TRIVY_SUMMARY = readFile('trivy-summary.txt').trim()
+                        echo "✅ Trivy scan completed. Summary:\\n${env.TRIVY_SUMMARY}"
+                    } else {
+                        env.TRIVY_SUMMARY = "Error: trivy-summary.txt not found or empty."
+                        echo "⚠️ Trivy summary file not found!"
+                    }
                 }
             }
         }
@@ -101,37 +100,30 @@ pipeline {
     post {
         always {
             script {
-                // Read summary safely
-                def summary = ''
-                if (fileExists('trivy-summary.txt')) {
-                    summary = readFile('trivy-summary.txt').trim()
-                } else {
-                    summary = "No summary available"
-                }
-
                 emailext(
-                    subject: "🛡️ Docker Build + Security Scan Report: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
+                    subject: "🛡️ [SECURITY SCAN] Docker Image Build Report: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
                     body: """
                         <html>
                         <body style="font-family: Arial, sans-serif; color: #333;">
-                            <h2 style="color: #2E86C1;">Docker Image Build & Security Scan Report</h2>
+                            <h2 style="color: #2E86C1;">🛡️ Docker Image Build & Security Scan Report</h2>
                             <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 14px;">
                                 <tr><td><strong>Docker Image</strong></td><td>${env.DOCKER_IMAGE}</td></tr>
                                 <tr><td><strong>Digest</strong></td><td>${env.DOCKER_DIGEST}</td></tr>
                                 <tr><td><strong>Git Branch</strong></td><td>${env.GIT_BRANCH}</td></tr>
                                 <tr><td><strong>Git Commit</strong></td><td>${env.GIT_COMMIT_HASH}</td></tr>
                             </table>
-                            <h3 style="color: #C0392B; margin-top: 20px;">Trivy Vulnerability Summary:</h3>
-                            <pre style="background-color: #F4F4F4; padding: 10px; border-radius: 4px; font-size: 13px;">
-${summary}
+                            <h3 style="color: #C0392B; margin-top: 15px;">Trivy Vulnerability Summary</h3>
+                            <pre style="background-color: #F4F6F7; padding: 10px; border-radius: 5px;">
+${env.TRIVY_SUMMARY ?: 'No Trivy scan results available. Check pipeline logs for errors.'}
                             </pre>
+                            <p style="margin-top: 15px;">The Docker image has been built, pushed, and scanned for vulnerabilities.</p>
                         </body>
                         </html>
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    attachmentsPattern: 'trivy-report.txt' // attach full Trivy report
+                    attachmentsPattern: 'trivy-report.txt,trivy-summary.txt'
                 )
             }
         }
