@@ -92,6 +92,7 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-report.txt', fingerprint: true
+                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
                 }
             }
         }
