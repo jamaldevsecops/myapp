@@ -51,7 +51,7 @@ pipeline {
 
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest") 
+                        app.push("latest")
                         env.DOCKER_IMAGE = imageName
 
                         env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
@@ -65,7 +65,7 @@ pipeline {
             steps {
                 script {
                     // Write the template file with handling for missing FixedVersion
-                    writeFile file: 'trivy-summary.tpl', text: '''
+                    writeFile file: "${WORKSPACE}/trivy-summary.tpl", text: '''
 {{ range .Results }}
 {{ .Target }}:
     {{ if .Vulnerabilities }}
@@ -76,21 +76,34 @@ pipeline {
 {{ end }}
 '''
 
-                    // Run Trivy scans with explicit workspace path and debugging
-                    sh """
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o ${WORKSPACE}/trivy-report.txt ${env.DOCKER_IMAGE}
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template ${WORKSPACE}/trivy-summary.tpl -o ${WORKSPACE}/trivy-summary.txt ${env.DOCKER_IMAGE}
-                        ls -l ${WORKSPACE}/trivy-summary.txt
-                        cat ${WORKSPACE}/trivy-summary.txt
-                    """
+                    // Run Trivy scans with explicit workspace path and error handling
+                    try {
+                        sh """
+                            trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o ${WORKSPACE}/trivy-report.txt ${env.DOCKER_IMAGE}
+                            trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template ${WORKSPACE}/trivy-summary.tpl -o ${WORKSPACE}/trivy-summary.txt ${env.DOCKER_IMAGE} || echo "Trivy scan failed" > ${WORKSPACE}/trivy-summary.txt
+                            ls -l ${WORKSPACE}/trivy-summary.txt
+                            cat ${WORKSPACE}/trivy-summary.txt
+                        """
 
-                    // Read the summary with error handling
-                    if (fileExists('trivy-summary.txt')) {
-                        env.TRIVY_SUMMARY = readFile('trivy-summary.txt').trim()
-                        echo "✅ Trivy scan completed. Summary:\\n${env.TRIVY_SUMMARY}"
-                    } else {
-                        env.TRIVY_SUMMARY = "Error: trivy-summary.txt not found or empty."
-                        echo "⚠️ Trivy summary file not found!"
+                        // Read the summary with error handling
+                        if (fileExists("${WORKSPACE}/trivy-summary.txt")) {
+                            env.TRIVY_SUMMARY = readFile("${WORKSPACE}/trivy-summary.txt").trim()
+                            if (env.TRIVY_SUMMARY == "Trivy scan failed") {
+                                env.TRIVY_SUMMARY = "Error: Trivy scan failed. Check pipeline logs for details."
+                                echo "⚠️ Trivy scan failed!"
+                            } else if (env.TRIVY_SUMMARY?.trim()) {
+                                echo "✅ Trivy scan completed. Summary:\\n${env.TRIVY_SUMMARY}"
+                            } else {
+                                env.TRIVY_SUMMARY = "Error: trivy-summary.txt is empty."
+                                echo "⚠️ Trivy summary file is empty!"
+                            }
+                        } else {
+                            env.TRIVY_SUMMARY = "Error: trivy-summary.txt not found."
+                            echo "⚠️ Trivy summary file not found!"
+                        }
+                    } catch (Exception e) {
+                        env.TRIVY_SUMMARY = "Error: Trivy scan failed with exception: ${e.message}"
+                        echo "⚠️ Trivy scan failed with error: ${e.message}"
                     }
                 }
             }
@@ -123,7 +136,7 @@ ${env.TRIVY_SUMMARY ?: 'No Trivy scan results available. Check pipeline logs for
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    attachmentsPattern: 'trivy-report.txt,trivy-summary.txt'
+                    attachmentsPattern: "${WORKSPACE}/trivy-report.txt,${WORKSPACE}/trivy-summary.txt"
                 )
             }
         }
