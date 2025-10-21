@@ -24,11 +24,9 @@ pipeline {
                 script {
                     sh 'git fetch --tags'
 
-		    // Try to get the latest Git tag
                     def gitTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo ''").trim()
                     def commitHash = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
 
-		    // Determine image tag
                     if (params.OVERRIDE_TAG?.trim()) {
                         env.IMAGE_TAG = params.OVERRIDE_TAG
                         echo "🔖 Using override tag: ${env.IMAGE_TAG}"
@@ -70,16 +68,18 @@ pipeline {
             steps {
                 script {
                     echo "🔍 Scanning Docker image for vulnerabilities..."
+                    
+                    // Generate text + HTML reports, do not fail build
                     sh '''
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt $DOCKER_IMAGE
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format html -o trivy-report.html $DOCKER_IMAGE
                         echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-report.html"
                     '''
 
-                    // (Optional) Fail the build if CRITICAL vulns exist
-                    sh '''
-                        trivy image --exit-code 1 --severity CRITICAL $DOCKER_IMAGE || echo "⚠️ Critical vulnerabilities found — continuing for report"
-                    '''
+                    // Optional: create a short summary (first 10 lines) for email
+                    script {
+                        env.TRIVY_SUMMARY = readFile('trivy-report.txt').split('\n').take(10).join('<br>')
+                    }
                 }
             }
         }
@@ -100,6 +100,12 @@ pipeline {
                                 <tr><td><strong>Git Branch</strong></td><td>${env.GIT_BRANCH}</td></tr>
                                 <tr><td><strong>Git Commit</strong></td><td>${env.GIT_COMMIT_HASH}</td></tr>
                             </table>
+
+                            <h3 style="margin-top: 15px;">🔍 Trivy Vulnerability Summary (first 10 lines)</h3>
+                            <p style="font-family: monospace; background-color: #f5f5f5; padding: 10px; border-radius: 5px;">
+                                ${env.TRIVY_SUMMARY ?: 'No vulnerabilities found.'}
+                            </p>
+
                             <p style="margin-top: 15px;">The Docker image has been successfully built, pushed, and scanned with Trivy.</p>
                         </body>
                         </html>
