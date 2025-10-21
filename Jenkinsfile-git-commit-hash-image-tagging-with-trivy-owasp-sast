@@ -44,19 +44,17 @@ pipeline {
         stage('🔧 Build & Push Docker Image') {
             steps {
                 script {
+                    def imageName = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
                     docker.withRegistry("https://index.docker.io/v1/", env.DOCKER_CREDENTIALS_ID) {
-                        def imageName = "${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:${env.IMAGE_TAG}"
                         echo "🔧 Building Docker image: ${imageName}"
                         def app = docker.build(imageName, "-f ${env.DOCKER_FILENAME} .")
-
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest") 
-                        env.DOCKER_IMAGE = imageName
-
-                        env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
-                        echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
+                        app.push("latest")
                     }
+                    env.DOCKER_IMAGE = imageName
+                    env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
+                    echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
                 }
             }
         }
@@ -74,8 +72,8 @@ pipeline {
             post {
                 always {
                     echo "📦 Archiving Dependency-Check reports..."
-                    archiveArtifacts artifacts: 'dependency-check-report.*', fingerprint: true
-                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
+                    archiveArtifacts artifacts: 'dependency-check-report/*.xml,dependency-check-report/*.html', fingerprint: true
+                    dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
                 }
             }
         }
@@ -92,7 +90,6 @@ pipeline {
             post {
                 always {
                     archiveArtifacts artifacts: 'trivy-report.txt', fingerprint: true
-                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
                 }
             }
         }
