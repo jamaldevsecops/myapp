@@ -1,4 +1,4 @@
-// Jenkinsfile: Build Docker Image + Trivy Scan + Email Report
+// Jenkinsfile: Build Docker Image + Trivy Scan + Email Report (JSON/Table)
 pipeline {
     agent {
         label 'BUILD-SERVER'
@@ -68,12 +68,12 @@ pipeline {
             steps {
                 script {
                     echo "🔍 Scanning Docker image for vulnerabilities..."
-                    
-                    // Generate text + HTML reports, do not fail build
+
+                    // Generate table + JSON reports, do not fail build
                     sh '''
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt $DOCKER_IMAGE
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o trivy-report.json $DOCKER_IMAGE
-                        echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-report.html"
+                        echo "✅ Trivy scan completed. Reports saved: trivy-report.txt, trivy-report.json"
                     '''
 
                     // Optional: create a short summary (first 10 lines) for email
