@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        label 'BUILD-SERVER'
-    }
+    agent { label 'BUILD-SERVER' }
 
     parameters {
         string(name: 'OVERRIDE_TAG', defaultValue: '', description: 'Optional: override auto-generated image tag')
@@ -22,15 +20,19 @@ pipeline {
                 checkout scm
                 script {
                     sh 'git fetch --tags'
+
                     def gitTag = sh(returnStdout: true, script: "git describe --tags --abbrev=0 || echo ''").trim()
                     def commitHash = sh(returnStdout: true, script: "git rev-parse --short HEAD").trim()
 
                     if (params.OVERRIDE_TAG?.trim()) {
                         env.IMAGE_TAG = params.OVERRIDE_TAG
+                        echo "🔖 Using override tag: ${env.IMAGE_TAG}"
                     } else if (gitTag) {
                         env.IMAGE_TAG = gitTag.startsWith('v') ? gitTag.substring(1) : gitTag
+                        echo "🔖 Using Git tag as image tag: ${env.IMAGE_TAG}"
                     } else {
                         env.IMAGE_TAG = commitHash
+                        echo "🔖 No Git tag found. Using commit hash as image tag: ${env.IMAGE_TAG}"
                     }
 
                     env.GIT_COMMIT_HASH = commitHash
@@ -49,10 +51,11 @@ pipeline {
 
                         echo "📤 Pushing Docker image..."
                         app.push()
-                        app.push("latest")
+                        app.push("latest") 
                         env.DOCKER_IMAGE = imageName
 
                         env.DOCKER_DIGEST = sh(returnStdout: true, script: "docker inspect --format='{{index .RepoDigests 0}}' ${imageName}").trim()
+                        echo "✅ Docker image pushed: ${env.DOCKER_IMAGE} (${env.DOCKER_DIGEST})"
                     }
                 }
             }
@@ -61,37 +64,26 @@ pipeline {
         stage('🛡️ Trivy Image Scan') {
             steps {
                 script {
-                    // Run Trivy and save reports
+                    // Create a simple template for Trivy summary
+                    writeFile file: 'trivy-summary.tpl', text: '''
+{{ range .Results }}
+{{ .Target }}:
+  {{ if .Vulnerabilities }}
+  {{ range .Vulnerabilities }}- {{ .Severity }}: {{ .PkgName }} {{ .InstalledVersion }} -> {{ .FixedVersion }}
+  {{ end }}
+  {{ else }}No vulnerabilities found.
+  {{ end }}
+{{ end }}
+'''
+
+                    // Run Trivy scans
                     sh """
                         trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt ${env.DOCKER_IMAGE}
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o trivy-report.json ${env.DOCKER_IMAGE}
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format template --template ./trivy-summary.tpl -o trivy-summary.txt ${env.DOCKER_IMAGE}
                     """
 
-                    // Parse JSON safely in Jenkins sandbox
-                    def jsonText = readFile('trivy-report.json')
-                    def jsonSlurper = new groovy.json.JsonSlurper()
-                    def json = jsonSlurper.parseText(jsonText)
-
-                    // Initialize severity counters
-                    def severityCount = [CRITICAL:0, HIGH:0, MEDIUM:0, LOW:0]
-                    json.each { entry ->
-                        def result = entry.value
-                        def vulns = result['Vulnerabilities']
-                        if (vulns != null) {
-                            vulns.each { vuln ->
-                                def sev = vuln['Severity']?.toUpperCase()
-                                if (severityCount.containsKey(sev)) {
-                                    severityCount[sev] += 1
-                                }
-                            }
-                        }
-                    }
-                    env.CRITICAL = severityCount.CRITICAL.toString()
-                    env.HIGH     = severityCount.HIGH.toString()
-                    env.MEDIUM   = severityCount.MEDIUM.toString()
-                    env.LOW      = severityCount.LOW.toString()
-
-                    echo "✅ Trivy scan completed. Critical:${env.CRITICAL}, High:${env.HIGH}, Medium:${env.MEDIUM}, Low:${env.LOW}"
+                    env.TRIVY_SUMMARY = readFile('trivy-summary.txt').trim()
+                    echo "✅ Trivy scan completed. Summary:\\n${env.TRIVY_SUMMARY}"
                 }
             }
         }
@@ -101,29 +93,27 @@ pipeline {
         always {
             script {
                 emailext(
-                    subject: "🛡️ Trivy Security Scan Report: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
+                    subject: "🛡️ [SECURITY SCAN] Docker Image Build Report: ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
                     body: """
                         <html>
                         <body style="font-family: Arial, sans-serif; color: #333;">
-                            <h2 style="color: #2F4F4F;">Trivy Security Scan Report</h2>
+                            <h2 style="color: #2E86C1;">🛡️ Docker Image Build & Security Scan Report</h2>
                             <table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse; font-size: 14px;">
                                 <tr><td><strong>Docker Image</strong></td><td>${env.DOCKER_IMAGE}</td></tr>
                                 <tr><td><strong>Digest</strong></td><td>${env.DOCKER_DIGEST}</td></tr>
                                 <tr><td><strong>Git Branch</strong></td><td>${env.GIT_BRANCH}</td></tr>
                                 <tr><td><strong>Git Commit</strong></td><td>${env.GIT_COMMIT_HASH}</td></tr>
-                                <tr><td><strong>Critical Vulns</strong></td><td>${env.CRITICAL}</td></tr>
-                                <tr><td><strong>High Vulns</strong></td><td>${env.HIGH}</td></tr>
-                                <tr><td><strong>Medium Vulns</strong></td><td>${env.MEDIUM}</td></tr>
-                                <tr><td><strong>Low Vulns</strong></td><td>${env.LOW}</td></tr>
                             </table>
-                            <p style="margin-top: 15px;">Attached: trivy-report.txt</p>
+                            <h3 style="color: #C0392B; margin-top: 15px;">Trivy Vulnerability Summary</h3>
+                            <pre style="background-color: #F4F6F7; padding: 10px; border-radius: 5px;">${env.TRIVY_SUMMARY}</pre>
+                            <p style="margin-top: 15px;">The Docker image has been built, pushed, and scanned for vulnerabilities.</p>
                         </body>
                         </html>
                     """,
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    attachmentsPattern: 'trivy-report.txt'
+                    attachmentsPattern: 'trivy-report.txt,trivy-summary.txt'
                 )
             }
         }
