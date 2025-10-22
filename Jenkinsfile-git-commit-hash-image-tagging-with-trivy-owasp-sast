@@ -64,16 +64,14 @@ pipeline {
                 script {
                     echo "🔍 Running OWASP Dependency-Check analysis..."
                     dependencyCheck additionalArguments: '--format XML --format HTML --enableExperimental',
-                        odcInstallation: "${env.DEP_CHECK_NAME}",
-                        outdir: 'dependency-check-report',
-                        scanpath: '.'
+                        odcInstallation: "${env.DEP_CHECK_NAME}"
                 }
             }
             post {
                 always {
                     echo "📦 Archiving Dependency-Check reports..."
-                    archiveArtifacts artifacts: 'dependency-check-report/*.xml,dependency-check-report/*.html', fingerprint: true
-                    dependencyCheckPublisher pattern: 'dependency-check-report/dependency-check-report.xml'
+                    archiveArtifacts artifacts: '*.xml,*.html', fingerprint: true
+                    dependencyCheckPublisher pattern: 'dependency-check-report.xml'
                 }
             }
         }
