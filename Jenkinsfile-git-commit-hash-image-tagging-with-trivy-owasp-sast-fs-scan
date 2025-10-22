@@ -42,21 +42,22 @@ pipeline {
             }
         }
 
-        stage('🧮 Trivy Filesystem Scan') {
+        stage('Trivy Filesystem Scan') {
             steps {
                 script {
                     echo "🔍 Running Trivy filesystem scan (source dependencies)..."
-                    // Scan current workspace for dependency vulnerabilities
                     sh '''
-                        trivy fs --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-fs-report.txt .
-                        trivy fs --format json -o trivy-fs-report.json .
+                      mkdir -p reports
+                      curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+                      trivy fs --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o reports/trivy-fs-report.json .
+                      trivy fs --format template --template @html.tpl -o reports/trivy-fs-report.html .
                     '''
                 }
             }
             post {
                 always {
                     echo "📦 Archiving Trivy FS reports..."
-                    archiveArtifacts artifacts: 'trivy-fs-report.*', fingerprint: true
+                    archiveArtifacts artifacts: 'reports/trivy-fs-report.*', fingerprint: true
                 }
             }
         }
@@ -99,15 +100,19 @@ pipeline {
         stage('🛡️ Trivy Image Scan') {
             steps {
                 script {
+                    echo "🔍 Running Trivy image scan..."
                     sh """
-                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format table -o trivy-report.txt ${env.DOCKER_IMAGE}
+                        mkdir -p reports
+                        curl -sSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -o html.tpl
+                        trivy image --exit-code 0 --severity LOW,MEDIUM,HIGH,CRITICAL --format json -o reports/trivy-image-report.json ${env.DOCKER_IMAGE}
+                        trivy image --format template --template @html.tpl -o reports/trivy-image-report.html ${env.DOCKER_IMAGE}
                     """
-                    echo "✅ Trivy image scan completed."
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'trivy-report.txt', fingerprint: true
+                    echo "📦 Archiving Trivy Image reports..."
+                    archiveArtifacts artifacts: 'reports/trivy-image-report.*', fingerprint: true
                 }
             }
         }
@@ -116,8 +121,7 @@ pipeline {
     post {
         always {
             script {
-                // Verify all reports before sending email
-                sh 'ls -l dependency-check-report*.html dependency-check-report*.xml trivy-report.txt trivy-fs-report.* || true'
+                sh 'ls -l reports/trivy-*.html reports/trivy-*.json dependency-check-report*.html dependency-check-report*.xml || true'
 
                 emailext(
                     subject: "🛡️ [Security Report] ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
@@ -133,9 +137,9 @@ pipeline {
                             </table>
                             <p style="margin-top: 15px;">
                                 <strong>Attached Reports:</strong><br>
-                                • Trivy Filesystem Scan (JSON, Text)<br>
+                                • Trivy Filesystem Scan (HTML, JSON)<br>
                                 • OWASP Dependency-Check (HTML, XML)<br>
-                                • Trivy Image Scan (Text)
+                                • Trivy Image Scan (HTML, JSON)
                             </p>
                         </body>
                         </html>
@@ -143,7 +147,7 @@ pipeline {
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    attachmentsPattern: 'trivy-fs-report.*,dependency-check-report*.html,dependency-check-report*.xml,trivy-report.txt'
+                    attachmentsPattern: 'reports/trivy-*.html,reports/trivy-*.json,dependency-check-report*.html,dependency-check-report*.xml'
                 )
             }
         }
