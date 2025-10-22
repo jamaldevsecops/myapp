@@ -11,7 +11,7 @@ pipeline {
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
         RECIPIENT_EMAILS      = "jamal.devsecops@gmail.com"
-        DEP_CHECK_NAME        = "OWASP-DC"  // matches the name in Jenkins Global Tool Config
+        DEP_CHECK_NAME        = "OWASP-DC"  // matches name in Jenkins Global Tool Config
     }
 
     stages {
@@ -96,6 +96,9 @@ pipeline {
     post {
         always {
             script {
+                // Verify reports before email
+                sh 'ls -l dependency-check-report*.html dependency-check-report*.xml trivy-report.txt || true'
+
                 emailext(
                     subject: "🛡️ [Security Report] ${env.CONTAINER_NAME}:${env.IMAGE_TAG}",
                     body: """
@@ -119,7 +122,6 @@ pipeline {
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    sh 'ls -l dependency-check-report*.html dependency-check-report*.xml trivy-report.txt || true'
                     attachmentsPattern: 'dependency-check-report*.html,dependency-check-report*.xml,trivy-report.txt'
                 )
             }
