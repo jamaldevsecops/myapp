@@ -119,7 +119,8 @@ pipeline {
                     mimeType: 'text/html',
                     to: "${env.RECIPIENT_EMAILS}",
                     attachLog: true,
-                    attachmentsPattern: 'dependency-check-report/*.html,dependency-check-report/*.xml,trivy-report.txt'
+                    sh 'ls -l dependency-check-report*.html dependency-check-report*.xml trivy-report.txt || true'
+                    attachmentsPattern: 'dependency-check-report*.html,dependency-check-report*.xml,trivy-report.txt'
                 )
             }
         }
