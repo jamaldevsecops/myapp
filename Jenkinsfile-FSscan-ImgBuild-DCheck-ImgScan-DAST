@@ -120,26 +120,22 @@ pipeline {
 
         stage('🌐 OWASP ZAP (DAST Scan)') {
             environment {
-                CONTAINER_PORT  = "80"                // Internal container port
-                MAX_STARTUP_WAIT = 60                  // Max seconds to wait for container readiness
+                CONTAINER_PORT  = "80"                   // Internal container port
+                MAX_STARTUP_WAIT = 60                     // Max seconds to wait for container readiness
                 ZAP_IMAGE       = "zaproxy/zap-stable:latest"
                 ZAP_REPORT_BASE = "reports/zap"
+                CONTAINER_INSTANCE = ""                   // Declare globally so post can access
+                ZAP_REPORT_DIR     = ""
             }
             steps {
                 script {
                     echo "🌐 Starting OWASP ZAP DAST Scan..."
         
-                    // Generate unique suffix per job/run
+                    // Unique suffix for this build
                     def runSuffix = "${BUILD_ID}-${UUID.randomUUID().toString()[0..6]}"
-                    def HOST_PORT = ""
-                    def CONTAINER_INSTANCE = ""
-                    def ZAP_REPORT_DIR = "${env.ZAP_REPORT_BASE}-${runSuffix}"
-        
-                    // Create report folder
-                    sh "mkdir -p ${ZAP_REPORT_DIR}"
-        
-                    // Find free host port dynamically
-                    HOST_PORT = sh(
+                    
+                    // Determine host port
+                    def HOST_PORT = sh(
                         returnStdout: true,
                         script: '''
                             for i in $(seq 3000 3999); do
@@ -155,10 +151,14 @@ pipeline {
                         error("❌ No free host port found between 3000–3999!")
                     }
         
-                    CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}-${runSuffix}"
-                    echo "🚀 Test container: ${CONTAINER_INSTANCE} → localhost:${HOST_PORT}:${CONTAINER_PORT}"
+                    // Assign unique container and report names
+                    env.CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}-${runSuffix}"
+                    env.ZAP_REPORT_DIR = "${env.ZAP_REPORT_BASE}-${runSuffix}"
+                    sh "mkdir -p ${env.ZAP_REPORT_DIR}"
         
-                    // Pull app image and ZAP image
+                    echo "🚀 Test container: ${env.CONTAINER_INSTANCE} → localhost:${HOST_PORT}:${CONTAINER_PORT}"
+        
+                    // Pull images
                     docker.withRegistry("https://index.docker.io/v1/", env.DOCKER_CREDENTIALS_ID) {
                         sh "docker pull ${env.DOCKER_IMAGE}"
                         sh "docker pull ${ZAP_IMAGE}"
@@ -174,9 +174,9 @@ pipeline {
                         def runResult = sh(
                             returnStatus: true,
                             script: """
-                                docker run -d --rm --log-driver json-file --name ${CONTAINER_INSTANCE} \
+                                docker run -d --rm --log-driver json-file --name ${env.CONTAINER_INSTANCE} \
                                     -p ${HOST_PORT}:${CONTAINER_PORT} ${env.DOCKER_IMAGE} || \
-                                    (docker logs ${CONTAINER_INSTANCE} > ${ZAP_REPORT_DIR}/${CONTAINER_INSTANCE}-error.log)
+                                    (docker logs ${env.CONTAINER_INSTANCE} > ${env.ZAP_REPORT_DIR}/${env.CONTAINER_INSTANCE}-error.log)
                             """
                         )
         
@@ -194,46 +194,33 @@ pipeline {
                         error("❌ All attempts to start the container failed. Aborting ZAP scan.")
                     }
         
-                    // Wait for container to be ready (poll port)
+                    // Wait for container readiness
                     echo "⏳ Waiting for container readiness on port ${HOST_PORT}..."
                     def ready = false
                     def waited = 0
                     while (!ready && waited < MAX_STARTUP_WAIT.toInteger()) {
-                        def result = sh(
-                            returnStatus: true,
-                            script: "curl -s http://localhost:${HOST_PORT} > /dev/null"
-                        )
-                        if (result == 0) {
-                            ready = true
-                        } else {
-                            sleep 2
-                            waited += 2
-                        }
+                        def result = sh(returnStatus: true, script: "curl -s http://localhost:${HOST_PORT} > /dev/null")
+                        if (result == 0) { ready = true } else { sleep 2; waited += 2 }
                     }
-        
-                    if (!ready) {
-                        echo "⚠️ Container did not become ready in ${MAX_STARTUP_WAIT}s. Proceeding with ZAP scan anyway..."
-                    } else {
-                        echo "✅ Container is ready. Starting ZAP scan..."
-                    }
+                    if (!ready) echo "⚠️ Container did not become ready in ${MAX_STARTUP_WAIT}s. Proceeding anyway..."
         
                     // Run ZAP scan
                     sh """
                         docker run --rm --log-driver json-file \
-                            -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
+                            -v \$(pwd)/${env.ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
                             ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
                             -r zap-report.html || true
                     """
         
                     // Stop app container
-                    sh "docker stop ${CONTAINER_INSTANCE} || true"
+                    sh "docker stop ${env.CONTAINER_INSTANCE} || true"
                 }
             }
             post {
                 always {
                     script {
                         echo "📦 Archiving OWASP ZAP report..."
-                        archiveArtifacts artifacts: "${ZAP_REPORT_BASE}-*/zap-report.html, ${ZAP_REPORT_BASE}-*/${CONTAINER_INSTANCE}-error.log", fingerprint: true
+                        archiveArtifacts artifacts: "${env.ZAP_REPORT_DIR}/zap-report.html, ${env.ZAP_REPORT_DIR}/${env.CONTAINER_INSTANCE}-error.log", fingerprint: true
                     }
                 }
             }
