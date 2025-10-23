@@ -123,7 +123,7 @@ pipeline {
             environment {
                 ZAP_REPORT_BASE_DIR = "reports/zap"
                 ZAP_IMAGE           = "zaproxy/zap-stable:latest"
-                SLEEP_TIME          = "${SLEEP_TIME ?: 45}" // fallback 45s if not defined
+                SLEEP_TIME          = "${SLEEP_TIME ?: 45}"
                 UNIQUE_ID           = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_HASH.take(7)}"
             }
             steps {
@@ -138,10 +138,10 @@ pipeline {
                     def ZAP_REPORT_DIR = "${ZAP_REPORT_BASE_DIR}-${UNIQUE_ID}"
                     def ZAP_REPORT_FILE = "zap-report-${UNIQUE_ID}.html"
         
-                    // Ensure unique report directory
+                    // Ensure unique report directory exists
                     sh "mkdir -p ${ZAP_REPORT_DIR}"
         
-                    // Select free host port and start container
+                    // Find a free host port
                     while (attempt <= MAX_RETRIES && !success) {
                         echo "🔁 Attempt #${attempt} to launch test container..."
         
@@ -167,7 +167,7 @@ pipeline {
                             returnStatus: true,
                             script: """
                                 echo "🚀 Launching test container: ${CONTAINER_INSTANCE} on port ${HOST_PORT}:${CONTAINER_PORT}"
-                                docker run -d --rm --log-driver json-file --name ${CONTAINER_INSTANCE} \
+                                docker run -d --rm --name ${CONTAINER_INSTANCE} \
                                     -p ${HOST_PORT}:${CONTAINER_PORT} ${env.DOCKER_IMAGE} > /dev/null 2>&1
                             """
                         )
@@ -198,19 +198,18 @@ pipeline {
                         """
                     }
         
-                    // Run ZAP Baseline Scan with unique report file and proper permissions
+                    // Run ZAP scan with proper permissions
                     sh """
                         echo "⏳ Waiting ${SLEEP_TIME}s for app startup..."
                         sleep ${SLEEP_TIME}
         
                         echo "🔎 Running OWASP ZAP baseline scan..."
                         docker run --rm \
-                            --log-driver json-file \
                             -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw \
-                            --user $(id -u):$(id -g) \
+                            --user 0:0 \
                             --network host \
                             ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
-                            -r ${ZAP_REPORT_FILE} || true
+                            -r /zap/wrk/${ZAP_REPORT_FILE} || true
         
                         docker stop ${CONTAINER_INSTANCE} || true
                     """
@@ -219,7 +218,7 @@ pipeline {
             post {
                 always {
                     echo "📦 Archiving OWASP ZAP report..."
-                    archiveArtifacts artifacts: "reports/zap-${UNIQUE_ID}/${ZAP_REPORT_FILE}", fingerprint: true
+                    archiveArtifacts artifacts: "${ZAP_REPORT_DIR}/${ZAP_REPORT_FILE}", fingerprint: true
                 }
             }
         }
