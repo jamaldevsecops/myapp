@@ -7,12 +7,12 @@ pipeline {
 
     environment {
         CONTAINER_NAME        = "myapp"
+        CONTAINER_PORT        = "80"                   // <--- Add container internal port here
         DOCKER_FILENAME       = "Dockerfile"
         DOCKER_HUB_USERNAME   = "jamaldevsecops"
         DOCKER_CREDENTIALS_ID = "PersonalDockerHubAccessToken"
         RECIPIENT_EMAILS      = "jamalhossain.devsecops@gmail.com"
-        DEP_CHECK_NAME        = "OWASP-DC"   // Jenkins Global Tool Config name
-        SLEEP_TIME            = "45"         // Time (in seconds) to keep app running for DAST scan
+        DEP_CHECK_NAME        = "OWASP-DC"            // Jenkins Global Tool Config name
     }
 
     stages {
@@ -120,92 +120,96 @@ pipeline {
 
         stage('🌐 OWASP ZAP (DAST Scan)') {
             environment {
+                ZAP_REPORT_DIR = "reports"
                 ZAP_IMAGE      = "zaproxy/zap-stable:latest"
-                DOCKER_IMAGE   = "jamaldevsecops/myapp:v1.1.1"
-                DOCKER_CREDENTIALS_ID = 'docker-hub-credentials'
             }
             steps {
                 script {
-                    // Generate unique IDs
-                    def JOB_UUID = UUID.randomUUID().toString()[0..7]
-                    def HOST_PORT = sh(
+                    echo "🌐 Starting OWASP ZAP DAST Scan..."
+        
+                    // Generate unique suffix for container & report per job
+                    def uniqueId = "${BUILD_NUMBER}-${UUID.randomUUID().toString()[0..6]}"
+                    def hostPort = ""
+                    def containerName = "${env.CONTAINER_NAME}-${uniqueId}"
+                    def zapReportDir = "${ZAP_REPORT_DIR}/zap-${uniqueId}"
+                    def zapReportFile = "zap-report-${uniqueId}.html"
+        
+                    // Find a free host port
+                    hostPort = sh(
                         returnStdout: true,
                         script: '''
                             for i in $(seq 3000 3999); do
-                                if ! sudo lsof -iTCP -sTCP:LISTEN -P -n | grep -q ":$i"; then
+                                if ! lsof -iTCP -sTCP:LISTEN -P -n | grep -q ":$i"; then
                                     echo $i
                                     break
                                 fi
                             done
                         '''
                     ).trim()
-                    if (!HOST_PORT) { error("❌ No free host port found!") }
+                    if (!hostPort) { error("❌ No free host port available!") }
         
-                    def CONTAINER_INSTANCE = "myapp-${HOST_PORT}-${JOB_UUID}"
-                    def ZAP_REPORT_DIR = "reports/zap-${JOB_UUID}"
-                    def ZAP_REPORT_FILE = "${ZAP_REPORT_DIR}/zap-report.html"
-        
-                    // Create report directory
-                    sh "mkdir -p ${ZAP_REPORT_DIR}"
-        
-                    echo "🚀 Test container: ${CONTAINER_INSTANCE} → localhost:${HOST_PORT}:80"
+                    echo "🚀 Test container: ${containerName} → localhost:${hostPort}:${env.CONTAINER_PORT}"
         
                     // Pull images
-                    sh "docker pull ${DOCKER_IMAGE}"
+                    sh "docker pull ${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:v1.1.1"
+                    sh "docker pull ${ZAP_IMAGE}"
+        
+                    // Start container
+                    def runResult = sh(
+                        returnStatus: true,
+                        script: """
+                            docker run -d --rm --name ${containerName} -p ${hostPort}:${env.CONTAINER_PORT} \
+                                ${env.DOCKER_HUB_USERNAME}/${env.CONTAINER_NAME}:v1.1.1 || \
+                                (docker logs ${containerName} > ${zapReportDir}/${containerName}-error.log)
+                        """
+                    )
+                    if (runResult != 0) { error("❌ Failed to start test container!") }
+        
+                    // Wait for container readiness (simple retries)
+                    def ready = false
+                    for (int i = 0; i < 30; i++) {
+                        try {
+                            sh "curl -s http://localhost:${hostPort} > /dev/null && ready=true || true"
+                            if (ready) break
+                        } catch (e) { /* ignore */ }
+                        sleep 2
+                    }
+                    if (!ready) { echo "⚠️ Container did not become fully ready in 60s. Proceeding anyway..." }
+        
+                    // Authenticate to Docker Hub (if needed) & Pull ZAP image
                     withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID,
                                                      usernameVariable: 'DOCKER_USER',
                                                      passwordVariable: 'DOCKER_PASS')]) {
                         sh """
-                            echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin || true
+                            echo "🔑 Authenticating to Docker Hub..."
+                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin || true
+                            echo "📥 Pulling OWASP ZAP image..."
+                            docker pull ${ZAP_IMAGE} || true
                         """
                     }
-                    sh "docker pull ${ZAP_IMAGE}"
         
-                    // Start container with retries
-                    def MAX_RETRIES = 3
-                    def success = false
-                    for (int attempt=1; attempt<=MAX_RETRIES && !success; attempt++) {
-                        echo "🔁 Attempt #${attempt} to launch test container..."
-                        def runResult = sh(
-                            returnStatus: true,
-                            script: """
-                                docker run -d --rm --name ${CONTAINER_INSTANCE} -p ${HOST_PORT}:80 ${DOCKER_IMAGE} || \
-                                (docker logs ${CONTAINER_INSTANCE} > ${ZAP_REPORT_DIR}/${CONTAINER_INSTANCE}-error.log)
-                            """
-                        )
-                        if (runResult == 0) { 
-                            success = true
-                            echo "✅ Container started successfully"
-                        } else {
-                            echo "⚠️ Failed to start container, retrying..."
-                            sleep 5
-                        }
-                    }
-                    if (!success) {
-                        error("❌ All attempts to start the container failed. Aborting ZAP scan.")
-                    }
+                    // Prepare report directory
+                    sh "mkdir -p ${zapReportDir}"
         
-                    // Optional: wait a few seconds for container stabilization
-                    echo "⏳ Waiting 5s for container stabilization..."
-                    sleep 5
-        
-                    // Run ZAP baseline scan
+                    // Run OWASP ZAP baseline scan
                     sh """
                         echo "🔎 Running OWASP ZAP baseline scan..."
-                        docker run --rm -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
-                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} -r zap-report.html || true
+                        docker run --rm -v \$(pwd)/${zapReportDir}:/zap/wrk:rw --network host \
+                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${hostPort} -r ${zapReportFile} || true
+                        docker stop ${containerName} || true
                     """
-        
-                    // Stop container
-                    sh "docker stop ${CONTAINER_INSTANCE} || true"
-        
-                    // Archive reports
-                    echo "📦 Archiving OWASP ZAP report..."
-                    archiveArtifacts artifacts: "${ZAP_REPORT_FILE}, ${ZAP_REPORT_DIR}/${CONTAINER_INSTANCE}-error.log", fingerprint: true
+                }
+            }
+            post {
+                always {
+                    script {
+                        // Archive artifacts safely
+                        def zapReportDir = "${ZAP_REPORT_DIR}/zap-${BUILD_NUMBER}-*"
+                        archiveArtifacts artifacts: "${zapReportDir}/*.html, ${zapReportDir}/*-error.log", fingerprint: true
+                    }
                 }
             }
         }
-
 
     }
 
