@@ -127,36 +127,70 @@ pipeline {
             steps {
                 script {
                     echo "🌐 Starting OWASP ZAP DAST Scan..."
-
-                    // Find free host port dynamically (3000–3999)
-                    def HOST_PORT = sh(
-                        returnStdout: true,
-                        script: '''
-                            for i in $(seq 3000 3999); do
-                                if ! sudo netstat -tuln | grep -q ":$i "; then
-                                    echo $i
-                                    break
-                                fi
-                            done
-                        '''
-                    ).trim()
-
-                    if (!HOST_PORT) {
-                        error("❌ No free host port found between 3000-3999!")
+        
+                    def MAX_RETRIES = 3
+                    def attempt = 1
+                    def success = false
+                    def HOST_PORT = ""
+                    def CONTAINER_INSTANCE = ""
+        
+                    while (attempt <= MAX_RETRIES && !success) {
+                        echo "🔁 Attempt #${attempt} to launch test container..."
+        
+                        // Find a free port
+                        HOST_PORT = sh(
+                            returnStdout: true,
+                            script: '''
+                                for i in $(seq 3000 3999); do
+                                    if ! sudo netstat -tuln | grep -q ":$i "; then
+                                        echo $i
+                                        break
+                                    fi
+                                done
+                            '''
+                        ).trim()
+        
+                        if (!HOST_PORT) {
+                            error("❌ No free host port found between 3000–3999!")
+                        }
+        
+                        CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}"
+        
+                        // Try to start container with JSON log driver
+                        def runResult = sh(
+                            returnStatus: true,
+                            script: """
+                                echo "🚀 Launching test container: ${CONTAINER_INSTANCE} on port ${HOST_PORT}:${CONTAINER_PORT}"
+                                docker run -d --rm --log-driver json-file --name ${CONTAINER_INSTANCE} \
+                                    -p ${HOST_PORT}:${CONTAINER_PORT} ${env.DOCKER_IMAGE} > /dev/null 2>&1
+                            """
+                        )
+        
+                        if (runResult == 0) {
+                            echo "✅ Container started successfully on port ${HOST_PORT}"
+                            success = true
+                        } else {
+                            echo "⚠️ Failed to start container on attempt #${attempt}. Retrying..."
+                            attempt++
+                            sleep 5
+                        }
                     }
-
-                    def CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}"
+        
+                    if (!success) {
+                        error("❌ All attempts to start the container failed. Aborting ZAP scan.")
+                    }
+        
+                    // Run the scan once container is up
                     sh """
                         mkdir -p ${ZAP_REPORT_DIR}
-                        echo "🚀 Launching test container: ${CONTAINER_INSTANCE} on port ${HOST_PORT}:${CONTAINER_PORT}"
-                        docker run -d --rm --name ${CONTAINER_INSTANCE} -p ${HOST_PORT}:${CONTAINER_PORT} ${env.DOCKER_IMAGE} > /dev/null
+                        echo "⏳ Waiting ${SLEEP_TIME}s for app startup..."
                         sleep ${SLEEP_TIME}
-
+        
                         echo "🔎 Running OWASP ZAP baseline scan..."
                         docker run --rm -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
-                          ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
-                          -r zap-report.html || true
-
+                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
+                            -r zap-report.html || true
+        
                         docker stop ${CONTAINER_INSTANCE} || true
                     """
                 }
@@ -168,6 +202,7 @@ pipeline {
                 }
             }
         }
+
     }
 
     post {
