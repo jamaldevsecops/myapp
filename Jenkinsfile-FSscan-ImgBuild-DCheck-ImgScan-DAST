@@ -198,10 +198,10 @@ pipeline {
                         sleep ${SLEEP_TIME}
         
                         echo "🔎 Running OWASP ZAP baseline scan..."
-                        docker run --rm -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
-                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
-                            -r zap-report.html || true
-        
+                        docker run --rm --log-driver json-file \
+                            -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
+                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} -r zap-report.html || true
+
                         docker stop ${CONTAINER_INSTANCE} || true
                     """
                 }
