@@ -121,8 +121,10 @@ pipeline {
 
         stage('🌐 OWASP ZAP (DAST Scan)') {
             environment {
-                ZAP_REPORT_DIR = "reports/zap"
-                ZAP_IMAGE      = "zaproxy/zap-stable:latest"
+                ZAP_REPORT_BASE_DIR = "reports/zap"
+                ZAP_IMAGE           = "zaproxy/zap-stable:latest"
+                SLEEP_TIME          = "${SLEEP_TIME ?: 45}" // fallback 45s if not defined
+                UNIQUE_ID           = "${env.BUILD_NUMBER}-${env.GIT_COMMIT_HASH.take(7)}"
             }
             steps {
                 script {
@@ -133,7 +135,13 @@ pipeline {
                     def success = false
                     def HOST_PORT = ""
                     def CONTAINER_INSTANCE = ""
+                    def ZAP_REPORT_DIR = "${ZAP_REPORT_BASE_DIR}-${UNIQUE_ID}"
+                    def ZAP_REPORT_FILE = "zap-report-${UNIQUE_ID}.html"
         
+                    // Ensure unique report directory
+                    sh "mkdir -p ${ZAP_REPORT_DIR}"
+        
+                    // Select free host port and start container
                     while (attempt <= MAX_RETRIES && !success) {
                         echo "🔁 Attempt #${attempt} to launch test container..."
         
@@ -153,7 +161,7 @@ pipeline {
                             error("❌ No free host port found between 3000–3999!")
                         }
         
-                        CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}"
+                        CONTAINER_INSTANCE = "${env.CONTAINER_NAME}-${HOST_PORT}-${UNIQUE_ID}"
         
                         def runResult = sh(
                             returnStatus: true,
@@ -178,30 +186,32 @@ pipeline {
                         error("❌ All attempts to start the container failed. Aborting ZAP scan.")
                     }
         
-                    // Authenticate to Docker Hub (if required) & Pull ZAP image
+                    // Authenticate Docker and pull ZAP image
                     withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID,
                                                      usernameVariable: 'DOCKER_USER',
                                                      passwordVariable: 'DOCKER_PASS')]) {
                         sh """
                             echo "🔑 Authenticating to Docker Hub..."
                             echo "\$DOCKER_PASS" | docker login -u "\$DOCKER_USER" --password-stdin || true
-        
                             echo "📥 Pulling OWASP ZAP image..."
                             docker pull ${ZAP_IMAGE} || true
                         """
                     }
         
-                    // Run the scan
+                    // Run ZAP Baseline Scan with unique report file and proper permissions
                     sh """
-                        mkdir -p ${ZAP_REPORT_DIR}
                         echo "⏳ Waiting ${SLEEP_TIME}s for app startup..."
                         sleep ${SLEEP_TIME}
         
                         echo "🔎 Running OWASP ZAP baseline scan..."
-                        docker run --rm --log-driver json-file \
-                            -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw --network host \
-                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} -r zap-report.html || true
-
+                        docker run --rm \
+                            --log-driver json-file \
+                            -v \$(pwd)/${ZAP_REPORT_DIR}:/zap/wrk:rw \
+                            --user $(id -u):$(id -g) \
+                            --network host \
+                            ${ZAP_IMAGE} zap-baseline.py -t http://localhost:${HOST_PORT} \
+                            -r ${ZAP_REPORT_FILE} || true
+        
                         docker stop ${CONTAINER_INSTANCE} || true
                     """
                 }
@@ -209,7 +219,7 @@ pipeline {
             post {
                 always {
                     echo "📦 Archiving OWASP ZAP report..."
-                    archiveArtifacts artifacts: 'reports/zap/zap-report.html', fingerprint: true
+                    archiveArtifacts artifacts: "reports/zap-${UNIQUE_ID}/${ZAP_REPORT_FILE}", fingerprint: true
                 }
             }
         }
